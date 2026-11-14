@@ -56,6 +56,20 @@ this file wins.
   WebSockets. No reverse proxy is required.
 - Oneberth starts and stops those processes, as OS processes or Docker
   containers, on the one machine it runs on: on desktop, or on a single host.
+- Oneberth is two programs. The **launcher** (`oneberth start`,
+  `oneberth desktop`) starts and stops every process and holds no state. The
+  **shell** holds all the state and serves the web apps.
+- The shell runs natively when no enabled app needs Docker. It runs in a
+  container when at least one does. Docker is needed only then.
+- The shell has two ports. Port A, on the host's loopback (or the configured
+  address on the web), is for the browser and OS processes. Port B, on the
+  Docker network `oneberth`, is for containers, and accepts bearer tokens
+  only.
+- The launcher builds the shell's image from Oneberth's base image and the
+  wheels of the enabled in-process Python apps, and reuses it until that set
+  changes.
+- The launcher starts containers with the `docker` command line. The shell
+  never holds the Docker socket.
 - Nothing more: no cluster scheduling. A deployment that wants several
   services builds its own Helm chart or equivalent.
 - A background process reaches its app over the app's own HTTP API, with a

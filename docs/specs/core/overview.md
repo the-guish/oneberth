@@ -34,8 +34,9 @@ person's desktop and on a company's server.
 
 ### 5. A small footprint
 
-- Web: one shell process, one database. An app adds the processes it
-  declares, and no other service.
+- Web: the launcher, one shell, one database. An app adds the processes it
+  declares, and no other service. Docker is needed only when an app ships
+  an image.
 - Desktop: one launcher, a browser window, one SQLite file.
 
 ### 6. Apps in any language
@@ -65,8 +66,8 @@ person's desktop and on a company's server.
 
 - **Packages.** `oneberth-core` (pure: principals, roles, grants, the
   manifest schema, the configuration parser). `oneberth` (FastAPI routes,
-  sign-in, the stores, the app registry, the forwarder, the process
-  supervisor, the CLI, and the built shell UI as package data).
+  sign-in, the stores, the app registry, the forwarder, the launcher and
+  its runners, the CLI, and the built shell UI as package data).
   `oneberth-protocol` (the TypeScript source of the shell client and the
   shell UI).
 - **Commands.** `oneberth start` runs the web, multi-user mode.
@@ -78,10 +79,12 @@ person's desktop and on a company's server.
   roles granted on an admin screen, personal and service tokens. An
   out-of-process app gets a short-lived signed token on every request
   ([identity.md](identity.md)).
-- **Processes.** Oneberth starts and stops each app's web process (out of
-  process) and background processes, as OS processes or Docker containers,
-  on the machine it runs on. A background process reaches its app over the
-  app's HTTP API with a service token ([processes.md](processes.md)).
+- **Processes.** The launcher starts and stops the shell, each app's web
+  process (out of process) and background processes, as OS processes or
+  Docker containers, on the machine it runs on. The shell runs natively, or
+  in a container when an app needs Docker. A background process reaches its
+  app through the shell with a service token: on port A from the host, on
+  port B from a container ([processes.md](processes.md)).
 - **UI.** A 48 px icon rail, no top bar; a bottom tab bar on phones; the
   sign-in page; the admin screen ([shell-ui.md](shell-ui.md)).
 - **Protocol.** JSON-RPC 2.0 over `postMessage`, version 1: handshake,
@@ -95,10 +98,11 @@ person's desktop and on a company's server.
 |---|---|---|
 | who | many people, a company | one person, their machine |
 | sign-in | OIDC, allow list, roles | none: one local user |
-| listens on | the configured address, behind TLS | loopback only, a free port |
+| listens on | port A on the configured address, behind TLS; port B on the Docker network | port A on loopback only, a free port; port B on the Docker network |
 | database | PostgreSQL | one SQLite file in the user's data folder |
 | window | any browser | the installed Chrome, Chromium or Edge in app mode; else the default browser |
-| processes | the shell, and what the enabled apps declare, on one host | the same, on the desktop |
+| processes | the launcher, the shell, and what the enabled apps declare, on one host | the same, on the desktop |
+| the shell runs | natively, or in a container when an app needs Docker | the same |
 | stops | on signal | when the window closes or on signal |
 
 An app does not branch on the mode beyond what it is told: the storage it is

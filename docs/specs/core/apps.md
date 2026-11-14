@@ -18,14 +18,15 @@ draws the rail and the frame around the app.
 | | in process | out of process |
 |---|---|---|
 | language | Python | any |
-| web part | an ASGI application, mounted inside the shell's process | a web process of its own, started by Oneberth on a loopback port, to which the shell forwards |
+| web part | an ASGI application, mounted inside the shell's process (and inside the shell's image when the shell runs in a container) | a web process of its own, started by the launcher, to which the shell forwards ([processes.md](processes.md)) |
 | who it is asking | the principal, read from the request ([identity.md](identity.md)) | the identity token, in a header ([identity.md](identity.md)) |
 | cost | none | one process, one hop per request |
 
 - An in-process app runs in the shell's process. A crash or a blocking call
   in it stops the shell too. An in-process app keeps its web part light. Its
   heavy work goes to a background process.
-- An out-of-process app is reached over HTTP/1.1 on `127.0.0.1`. The shell
+- An out-of-process app is reached over HTTP/1.1: on `127.0.0.1` as an OS
+  process, by its name on the Docker network `oneberth` as a container. The shell
   forwards requests, streamed answers (server-sent events, long polls) and
   WebSockets. It strips any incoming identity header and adds its own.
 - A Python app may be either kind. The manifest says which.
@@ -113,12 +114,10 @@ resource = "queue:default"
 
 ## Lifecycle
 
-- At the start the shell reads every enabled manifest, mounts the in-process
-  apps, starts the out-of-process web processes and waits for their health,
-  starts the background processes, then listens.
-- At the stop it stops listening, stops the background processes, then the
-  web processes, then unmounts. See [processes.md](processes.md) for signals
-  and timeouts.
+- The launcher starts the shell, then the out-of-process web apps, then the
+  background processes, and stops them in the reverse order
+  ([processes.md](processes.md), "Starting" and "Stopping").
+- The shell mounts the in-process apps when it starts.
 - An in-process app may expose an ASGI lifespan. The shell runs it.
 
 ## What the shell hands an app
@@ -131,7 +130,7 @@ resource = "queue:default"
 |---|---|
 | `ONEBERTH_APP_ID` | the app's id |
 | `ONEBERTH_PUBLIC_URL` | the origin people use |
-| `ONEBERTH_APP_URL` | where the app's own processes reach its API |
+| `ONEBERTH_APP_URL` | where the app's own processes reach its API: port A from the host, port B from a container |
 | `ONEBERTH_APP_CONFIG` | the path of the app's own configuration file, if the shell's configuration names one |
 | `ONEBERTH_DATABASE_URL` | the database the app may use ([storage-and-config.md](storage-and-config.md)) |
 | `ONEBERTH_MODE` | `web` or `desktop` |
@@ -142,6 +141,18 @@ resource = "queue:default"
 
 Secrets are handed as files the process may read, never as values in the
 environment.
+
+## Mounts
+
+- A manifest may declare host folders its processes need:
+  `[[mount]] name = "repos"`, `target = "/data/repos"`, `writable = true`.
+- The configuration names the host folder for each:
+  `[apps.chat.mounts] repos = "~/code"`.
+- The launcher mounts it into the app's containers, and into the shell's
+  container when the app runs in process there. An OS process gets the host
+  path in `ONEBERTH_MOUNT_<NAME>`.
+- A declared mount with no host folder in the configuration refuses the start
+  of a required app.
 
 ## Open
 

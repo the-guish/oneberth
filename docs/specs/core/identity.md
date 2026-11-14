@@ -107,8 +107,9 @@ What an out-of-process app receives on every request it is forwarded.
 - The app checks `alg` is `HS256`, the signature, `aud`, `iss` and `exp`, and
   trusts nothing else in the request about who is asking.
 - The shell removes any `Oneberth-Identity` header a client sent.
-- The app's web process listens on loopback only, so nothing but the shell
-  reaches it. In a container, its port is published on loopback only.
+- The app's web process listens on loopback only when it is an OS process.
+  In a container it is reached by its name on the Docker network `oneberth`,
+  and publishes no port.
 
 ## API tokens
 
@@ -139,8 +140,11 @@ is looked up in and lets a secret scanner recognise it.
 - No sign-in. Every request is one local user, a real row under the reserved
   key `("!local", "desktop")`, which no provider can name.
 - That user holds every role of every app. The admin screen is hidden.
-- The shell listens on loopback only, and checks that `Host` names
+- The shell's port A is on loopback only. It checks that `Host` names
   `localhost` or an IP address, against DNS rebinding.
+- The local user exists only on port A. Port B, the containers' port,
+  accepts bearer tokens only, on desktop as on the web
+  ([processes.md](processes.md), "The shell's two ports").
 - Personal tokens can be minted for the local user, for scripts on the same
   machine.
 - A database kept from desktop and opened in web mode hands nobody the local
