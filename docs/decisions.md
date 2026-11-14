@@ -102,6 +102,10 @@ this file wins.
 
 ## Storage
 
+- Each app gets its own database login and its own schema on PostgreSQL. The
+  login reaches that schema alone, never the shell's tables or another
+  app's. On desktop each app gets its own SQLite file.
+
 - Oneberth creates its own tables with idempotent SQL and a `schema_version`
   row, as Robinauts and neorc do: in a schema of its own, `oneberth`, on
   PostgreSQL; in a SQLite file of their own on desktop, beside one file per

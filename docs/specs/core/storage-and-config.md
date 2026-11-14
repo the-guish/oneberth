@@ -19,16 +19,35 @@
 
 ## What an app gets
 
-- `ONEBERTH_DATABASE_URL`, when the app's manifest asks for a database
-  (`[storage] database = true`):
-  - web: the same PostgreSQL, with the app's own schema named by its id; the
-    shell creates the schema at the first start;
+- A database of its own, when the app's manifest asks for one
+  (`[storage] database = true`). The address is in a file, named by
+  `ONEBERTH_DATABASE_URL_FILE`:
+  - web: the same PostgreSQL server, in a schema of the app's own and under a
+    login of the app's own (below);
   - desktop: a SQLite file of the app's own, beside the shell's, at
     `sqlite:///<data folder>/<id>.sqlite3`.
 - An app keeps its tables in what it is given, and makes them itself.
 - An app may ignore it and use what its own configuration names.
 - An app learns about users, roles and tokens from the principal alone.
   Oneberth's tables are the shell's.
+
+## One schema and one login per app (PostgreSQL)
+
+- Each app that asks for a database gets a schema and a PostgreSQL role of
+  its own. Both are named `oneberth_app_<id>`, with `-` written as `_`.
+- The role owns its schema and has no rights anywhere else. It cannot read
+  the `oneberth` schema or another app's.
+- The role's `search_path` is its own schema, so the app's tables need no
+  schema prefix.
+- The shell creates the schema and the role at the app's first start. The
+  shell's own login therefore needs `CREATEROLE` and `CREATE` on the
+  database. An operator who will not grant them creates each role and schema
+  beforehand and names the role in `[apps.<id>] database_role`.
+- The shell sets a new random password on each app role at every start, and
+  hands it to that app's processes in their URL file. No app password is
+  stored.
+- Disabling an app keeps its schema and role. Removing them is the
+  operator's.
 
 ## The data folder (desktop)
 
@@ -53,7 +72,7 @@ public_url = "https://work.example.com"
 session_hours = 12
 
 [database]
-url_env = "ONEBERTH_DATABASE_URL"
+url_env = "ONEBERTH_SHELL_DATABASE_URL"
 
 [providers.okta]
 title = "Okta"

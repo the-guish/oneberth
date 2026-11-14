@@ -132,7 +132,7 @@ resource = "queue:default"
 | `ONEBERTH_PUBLIC_URL` | the origin people use |
 | `ONEBERTH_APP_URL` | where the app's own processes reach its API: port A from the host, port B from a container |
 | `ONEBERTH_APP_CONFIG` | the path of the app's own configuration file, if the shell's configuration names one |
-| `ONEBERTH_DATABASE_URL` | the database the app may use ([storage-and-config.md](storage-and-config.md)) |
+| `ONEBERTH_DATABASE_URL_FILE` | a file holding the address of the app's own database, with its own login ([storage-and-config.md](storage-and-config.md)) |
 | `ONEBERTH_MODE` | `web` or `desktop` |
 | `ONEBERTH_SIGN_IN` | `on` or `off` |
 | `ONEBERTH_IDENTITY_SECRET_FILE` | out of process: a file holding the secret to check identity tokens with |
