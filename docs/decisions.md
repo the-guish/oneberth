@@ -9,6 +9,8 @@ this file wins.
 
 - Oneberth is an empty shell. It has no app of its own.
 - It is built in this repository, not inside Robinauts or neorc.
+- Two commands: `oneberth start` for the web, multi-user mode, and
+  `oneberth desktop` for one person. Developers use `oneberth desktop`.
 - `oneberth start` serves the web apps: each app's ASGI application and its
   built UI, behind the shell's sign-in. Robinauts' Chat and neorc are apps.
 - An app is one same-origin frame that draws its own left, central and right
@@ -88,9 +90,14 @@ this file wins.
 
 - Oneberth creates its own tables with idempotent SQL and a `schema_version`
   row, as Robinauts and neorc do: in a schema of its own, `oneberth`, on
-  PostgreSQL; in the same SQLite file as the apps on desktop.
+  PostgreSQL; in a SQLite file of their own on desktop, beside one file per
+  app. (Changed in the specs pull request from "the same SQLite file as the
+  apps": apps in other languages write from processes of their own, and one
+  file per writer keeps SQLite's single-writer lock local to each.)
 
 ## The UI and the protocol
+
+- Oneberth's own routes are FastAPI, as Robinauts and neorc use.
 
 - The shell UI is React and TypeScript, under Robinauts' rules: `react` and
   `react-dom` are the only runtime dependencies.
@@ -101,6 +108,21 @@ this file wins.
   handshake and its version; the app's route, both ways, for deep links and
   Back; the title; badges; the theme; opening another app; and, on a phone,
   which drawer is open. A command palette (⌘K) comes later.
+
+## Configuration and URLs
+
+- One TOML file, named by `ONEBERTH_CONFIG`, configures the shell: sign-in,
+  the allow list, the first admins, the enabled apps, and where each app's
+  own configuration is. Each app keeps its own file, in its own format.
+- Every app lives under `/apps/<id>/`, its API and its pages alike. An app may
+  declare old paths, which the shell redirects. Robinauts' `/api/` becomes
+  `/apps/chat/api/`.
+
+## Later milestones
+
+- Linking phones (Robinauts' pairing and device sessions) belongs to
+  Oneberth, for every app. It is deferred to a later milestone; until then
+  Robinauts keeps it.
 
 ## Releases
 
