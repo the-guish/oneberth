@@ -76,7 +76,8 @@ person's desktop and on a company's server.
   mounted in process (Python) or forwarded to (any language) under
   `/apps/<id>/` ([apps.md](apps.md)).
 - **Identity.** OIDC sign-in, server-side sessions, an allow list, per-app
-  roles granted on an admin screen, personal and service tokens. An
+  roles granted on an admin screen, personal and service tokens, linked
+  phones. An
   out-of-process app gets a short-lived signed token on every request
   ([identity.md](identity.md)).
 - **Processes.** The launcher starts and stops the shell, each app's web
@@ -110,8 +111,6 @@ handed, and whether sign-in is on.
 
 ## Planned
 
-- Linking phones, for every app: pairing and device sessions, moved from
-  Robinauts.
 - Optional sign-in on desktop.
 - A command palette (⌘K).
 - Scopes on personal tokens.

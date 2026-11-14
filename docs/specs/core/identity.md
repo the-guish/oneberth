@@ -169,10 +169,17 @@ is looked up in and lets a secret scanner recognise it.
 - Sign-ins, refusals, sign-outs, grants made and taken back, and tokens
   minted and revoked are written to an audit log, with who did it.
 
+## Linking phones
+
+- A phone links to a person's account by QR code and number matching, as in
+  Robinauts (`docs/architecture/device-pairing.md` there). The design and its
+  code move here, for every app, in the first milestone.
+- A linked phone holds a device session (`obd_`), sent as a bearer. It acts as
+  its person, with their grants, in every app.
+- "Linked devices" in the profile menu lists and removes them.
+
 ## Planned
 
-- Linking phones: pairing by QR code and number matching, and device
-  sessions (`obd_`), from Robinauts, for every app.
 - Optional sign-in on desktop.
 - Scopes on personal tokens.
 

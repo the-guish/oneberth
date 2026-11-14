@@ -223,14 +223,26 @@ The pattern Robinauts' workers and neorc's workers already use:
 - Closing the last window stops everything, as SIGTERM does.
 - Docker on desktop is needed only when an enabled app ships an image.
 
+## Without the launcher
+
+A cluster (Kubernetes, or the like) starts the processes itself. Oneberth
+then does less.
+
+- `oneberth shell` runs the shell alone. It starts nothing and revokes no
+  token it did not issue to a launcher.
+- The operator hands the shell and each app their secrets: service tokens,
+  each app's identity secret and database login. `oneberth tokens create`
+  mints a service token for that.
+- The configuration names where each out-of-process app listens:
+  `[apps.<id>] url = "..."`.
+- The shell's image is built ahead of time with `oneberth image build`.
+
 ## Not offered
 
 - Placing processes on other machines, scaling, rolling updates, health-based
   traffic shifting. A deployment that needs them writes its own Helm chart or
-  equivalent.
+  equivalent, with the shell run as above.
 
 ## Open
 
-- Whether a deployment that runs the processes itself starts the shell
-  without the launcher, and how it then gets service tokens.
 - Limits per process (memory, CPU), and whether the launcher sets them.

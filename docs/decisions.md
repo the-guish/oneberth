@@ -146,11 +146,18 @@ this file wins.
   declare old paths, which the shell redirects. Robinauts' `/api/` becomes
   `/apps/chat/api/`.
 
-## Later milestones
+## Phones and app storage
 
 - Linking phones (Robinauts' pairing and device sessions) belongs to
-  Oneberth, for every app. It is deferred to a later milestone; until then
-  Robinauts keeps it.
+  Oneberth, for every app, from the first milestone. Robinauts' Android app
+  signs in through it.
+- Each app adds its own SQLite store, in a pull request of its own repository.
+  Oneberth only hands it the file.
+
+## Clusters
+
+- On a cluster Oneberth does less: `oneberth shell` runs the shell without the
+  launcher, and the operator hands the shell and the apps their secrets.
 
 ## Releases
 
