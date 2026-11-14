@@ -13,6 +13,19 @@ this file wins.
   built UI, behind the shell's sign-in. Robinauts' Chat and neorc are apps.
 - An app is one same-origin frame that draws its own left, central and right
   panels.
+- Apps may be written in any language. There are two kinds:
+  - **in process**: a Python app, its ASGI application mounted inside
+    `oneberth start`;
+  - **out of process**: an app in any language, its own web process, which
+    Oneberth starts and to which it forwards `/apps/<id>/`.
+- Every app ships a manifest file, `oneberth-app.toml`, whatever its
+  language. A Python app may point an entry point at it.
+- Oneberth finds installed apps (entry points and manifests); the
+  configuration says which are enabled. An installed app that is not
+  enabled has no tab.
+- What crosses between Oneberth and an app is specified as plain HTTP, JSON
+  and `postMessage`, never as a Python interface: the shell protocol, the
+  identity token, the service tokens.
 
 ## The chrome
 
@@ -41,6 +54,30 @@ this file wins.
 - A background process reaches its app over the app's own HTTP API, with a
   service token Oneberth issues. This is the pattern Robinauts' workers and
   neorc's workers already use. No message broker.
+
+## Identity, roles and tokens
+
+- Sign-in is Robinauts' own OIDC client on httpx, moved here: Google and Okta,
+  code flow with PKCE, no crypto dependency.
+- An in-process app reads the principal from the request. An out-of-process
+  app gets a short-lived JWT (HS256) in a header on every request, signed
+  with a secret of that app's: the person, their roles in that app, the age
+  of the session. The app checks it with any JWT library and trusts nothing
+  else.
+- Roles are plain and per app, with an optional resource:
+  `neorc:responder@queue:approvals`. Each app declares its permissions and a
+  fixed table from its roles to them. No policy engine.
+- People get roles from an admin screen in the shell. The grants are stored in
+  the database.
+- Two kinds of API tokens: personal tokens, which act as the person who
+  minted them; and service tokens, with one role and an optional resource,
+  for background processes and machines.
+
+## Storage
+
+- Oneberth creates its own tables with idempotent SQL and a `schema_version`
+  row, as Robinauts and neorc do: in a schema of its own, `oneberth`, on
+  PostgreSQL; in the same SQLite file as the apps on desktop.
 
 ## The UI and the protocol
 
