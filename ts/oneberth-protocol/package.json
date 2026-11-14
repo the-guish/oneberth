@@ -1,0 +1,15 @@
+{
+  "name": "oneberth-protocol",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The Oneberth shell protocol: types and a client for an app. Empty for now.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check-licences": "node scripts/check-licences.mjs",
+    "test": "node --test tests/check-licences.test.mjs"
+  }
+}
