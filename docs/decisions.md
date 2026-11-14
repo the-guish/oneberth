@@ -33,6 +33,8 @@ this file wins.
 - App icons and their badges at the top of the rail; settings and the profile
   at its foot.
 - No kiosk or full-screen mode.
+- On a phone the rail becomes a bottom tab bar, 56 px: up to four apps and
+  "You", then "More". The app's own panels are its drawers.
 
 ## Two deployment modes, the same apps
 
@@ -47,6 +49,9 @@ this file wins.
 
 - The web apps run in one process: `oneberth start`.
 - An app's background work (workers, schedulers) runs in processes of its own.
+- Requests to an out-of-process app are forwarded by `oneberth start`
+  itself, on httpx, streaming included (server-sent events, long polls) and
+  WebSockets. No reverse proxy is required.
 - Oneberth starts and stops those processes, as OS processes or Docker
   containers, on the one machine it runs on: on desktop, or on a single host.
 - Nothing more: no cluster scheduling. A deployment that wants several
@@ -67,8 +72,14 @@ this file wins.
 - Roles are plain and per app, with an optional resource:
   `neorc:responder@queue:approvals`. Each app declares its permissions and a
   fixed table from its roles to them. No policy engine.
+- Who may sign in at all is the configuration file's allow list, as in
+  Robinauts and neorc: a provider and one matcher (subject, email, email
+  domain, hosted domain, group, everyone).
 - People get roles from an admin screen in the shell. The grants are stored in
   the database.
+- The configuration file names the first admins, with the allow list's
+  matchers. They grant the rest on the admin screen. The file always gets an
+  operator back in.
 - Two kinds of API tokens: personal tokens, which act as the person who
   minted them; and service tokens, with one role and an optional resource,
   for background processes and machines.
@@ -86,6 +97,15 @@ this file wins.
 - An app talks to the shell over `postMessage`. It loads the client from the
   shell, at `/shell/client.js`; the two exchange a protocol version when they
   connect.
+- Version 1 of the protocol holds what the rail needs and nothing more: the
+  handshake and its version; the app's route, both ways, for deep links and
+  Back; the title; badges; the theme; opening another app; and, on a phone,
+  which drawer is open. A command palette (⌘K) comes later.
+
+## Releases
+
+- PyPI and npm, by trusted publishing, from the first tagged release. Until
+  then, an app pins a commit of this repository, as Robinauts pins neorc.
 
 ## Names
 
