@@ -61,15 +61,25 @@ this file wins.
   **shell** holds all the state and serves the web apps.
 - The shell runs natively when no enabled app needs Docker. It runs in a
   container when at least one does. Docker is needed only then.
-- The shell has two ports. Port A, on the host's loopback (or the configured
-  address on the web), is for the browser and OS processes. Port B, on the
-  Docker network `oneberth`, is for containers, and accepts bearer tokens
-  only.
+- The shell has three ports. Port A, on the host's loopback (or the
+  configured address on the web), is for the browser and OS processes. Port
+  B, on each app's Docker network, is for containers, and accepts service
+  tokens only. Port C, on loopback alone, is for the launcher.
 - The launcher builds the shell's image from Oneberth's base image and the
   wheels of the enabled in-process Python apps, and reuses it until that set
   changes.
 - The launcher starts containers with the `docker` command line. The shell
   never holds the Docker socket.
+- A process may declare a command, an image or both. With both, the image is
+  used when the shell runs in a container. A web app with only a command
+  cannot run with a containerised shell.
+- The data folder is mounted into the shell's container. Nothing moves when
+  the shell changes place.
+- The launcher installs the in-process web apps inside the shell's image,
+  from a lock file and a named package index. A development mode mounts an
+  app's source and skips the image cache.
+- One Docker network per app, with the shell attached to each. An app's
+  containers reach the shell and their own app alone.
 - Nothing more: no cluster scheduling. A deployment that wants several
   services builds its own Helm chart or equivalent.
 - A background process reaches its app over the app's own HTTP API, with a

@@ -55,9 +55,8 @@
   Linux, `~/Library/Application Support/Oneberth` on macOS,
   `%LOCALAPPDATA%\Oneberth` on Windows.
 - It holds the SQLite files, the browser profile, the logs and the lock.
-- When the shell runs in a container, its SQLite files live in the Docker
-  volume `oneberth-data` instead. The browser profile, the logs and the lock
-  stay in the data folder.
+- When the shell runs in a container, the data folder is mounted into it at
+  the same path. The SQLite files never move.
 
 ## The configuration
 

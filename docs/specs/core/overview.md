@@ -98,7 +98,7 @@ person's desktop and on a company's server.
 |---|---|---|
 | who | many people, a company | one person, their machine |
 | sign-in | OIDC, allow list, roles | none: one local user |
-| listens on | port A on the configured address, behind TLS; port B on the Docker network | port A on loopback only, a free port; port B on the Docker network |
+| listens on | port A on the configured address, behind TLS; port B on the Docker network | port A on loopback only, a port fixed at the first start; port B on each app's Docker network |
 | database | PostgreSQL | one SQLite file in the user's data folder |
 | window | any browser | the installed Chrome, Chromium or Edge in app mode; else the default browser |
 | processes | the launcher, the shell, and what the enabled apps declare, on one host | the same, on the desktop |

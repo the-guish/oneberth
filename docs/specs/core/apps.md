@@ -26,7 +26,7 @@ draws the rail and the frame around the app.
   in it stops the shell too. An in-process app keeps its web part light. Its
   heavy work goes to a background process.
 - An out-of-process app is reached over HTTP/1.1: on `127.0.0.1` as an OS
-  process, by its name on the Docker network `oneberth` as a container. The shell
+  process, by its name on its app's Docker network as a container. The shell
   forwards requests, streamed answers (server-sent events, long polls) and
   WebSockets. It strips any incoming identity header and adds its own.
 - A Python app may be either kind. The manifest says which.
@@ -48,7 +48,7 @@ optional = true                   # a missing optional app is skipped; a missing
 kind = "in-process"               # or "out-of-process"
 asgi = "neorc_oneberth:app"       # in-process: module:attribute of the ASGI app factory
 # command = ["neorc-web", "--port", "{port}"]   # out-of-process: argv; {port} is filled in
-# image = "ghcr.io/example/app@sha256:..."      # out-of-process, in a container instead
+# image = "ghcr.io/example/app@sha256:..."      # out-of-process, in a container; with both, the image is used when the shell runs in a container
 ui = "ui/"                        # the built UI, relative to the manifest; served at /apps/<id>/ui/
 entry = "ui/index.html"
 health = "/healthz"               # out-of-process: polled until it answers 200
@@ -134,6 +134,7 @@ resource = "queue:default"
 | `ONEBERTH_APP_CONFIG` | the path of the app's own configuration file, if the shell's configuration names one |
 | `ONEBERTH_DATABASE_URL_FILE` | a file holding the address of the app's own database, with its own login ([storage-and-config.md](storage-and-config.md)) |
 | `ONEBERTH_MODE` | `web` or `desktop` |
+| `ONEBERTH_SHELL` | `native` or `container`: where the shell runs |
 | `ONEBERTH_SIGN_IN` | `on` or `off` |
 | `ONEBERTH_IDENTITY_SECRET_FILE` | out of process: a file holding the secret to check identity tokens with |
 | `ONEBERTH_TOKEN_FILE` | a background process: a file holding its service token |
@@ -145,12 +146,14 @@ environment.
 ## Mounts
 
 - A manifest may declare host folders its processes need:
-  `[[mount]] name = "repos"`, `target = "/data/repos"`, `writable = true`.
+  `[[mount]] name = "repos"`, `writable = true`.
 - The configuration names the host folder for each:
   `[apps.chat.mounts] repos = "~/code"`.
 - The launcher mounts it into the app's containers, and into the shell's
-  container when the app runs in process there. An OS process gets the host
-  path in `ONEBERTH_MOUNT_<NAME>`.
+  container when the app runs in process there, at the host's own path. So a
+  path stored by one process means the same file to every other.
+- Every process gets the path in `ONEBERTH_MOUNT_<NAME>`, natively and in a
+  container alike.
 - A declared mount with no host folder in the configuration refuses the start
   of a required app.
 
