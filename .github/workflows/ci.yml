@@ -1,0 +1,140 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright The Oneberth Authors
+#
+# Every job here runs one script from scripts/, and nothing else: a check that
+# only exists inside a workflow cannot be run before pushing, and cannot be
+# debugged when it fails. scripts/check-all.sh runs the lot locally.
+#
+# The actions are pinned to the very commits Robinauts' workflow pins, and
+# Dependabot moves them (.github/dependabot.yml).
+
+name: CI
+
+on:
+  # main after every merge: a pull request is checked merged into the main of
+  # its day, so two merged one after the other are only ever checked together
+  # here.
+  push:
+    branches: [main]
+  # A branch is checked through its pull request, once per push.
+  pull_request:
+
+# Nothing in this workflow writes to the repository.
+permissions:
+  contents: read
+
+# One run at a time for main, and per pull request: a newer push cancels the
+# run it makes stale.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The version the packages target, as Robinauts does. The lock resolves for
+  # >= 3.12.
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  tests:
+    name: the checks' own tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The uv version lives with the other hand-bumped pins, in one file.
+      - run: . ./scripts/tool-versions.sh && echo "UV_VERSION=$UV_VERSION" >>"$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      # The licence gate, the audit and the sign-off check, tested against
+      # fixtures and stand-in tools: a gate that passes when its own tooling
+      # fails is worse than no gate.
+      - run: scripts/check-tests.sh
+
+  licences:
+    name: dependency licences (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The uv version lives with the other hand-bumped pins, in one file.
+      - run: . ./scripts/tool-versions.sh && echo "UV_VERSION=$UV_VERSION" >>"$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      # The policy of DEPENDENCIES.md over the whole of uv.lock.
+      - run: scripts/check-licences.sh
+
+  audit:
+    name: known vulnerabilities (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The uv version lives with the other hand-bumped pins, in one file.
+      - run: . ./scripts/tool-versions.sh && echo "UV_VERSION=$UV_VERSION" >>"$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      # pip-audit over every package uv.lock pins, and a check that it really
+      # looked at every one of them.
+      - run: scripts/check-audit.sh
+
+  npm:
+    name: the npm package's licences and audits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Node version is ts/oneberth-protocol/.nvmrc, the same file nvm
+      # reads on a laptop, so there is one place it is written down. No npm
+      # cache yet: the package has no dependency to download.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ts/oneberth-protocol/.nvmrc
+      # npm ci, the licence gate and its tests, npm audit and npm audit
+      # signatures. A red step here names docs/contributing/js-dependencies.md.
+      - run: scripts/check-npm.sh
+
+  reuse:
+    name: licence headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The uv version lives with the other hand-bumped pins, in one file.
+      - run: . ./scripts/tool-versions.sh && echo "UV_VERSION=$UV_VERSION" >>"$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - run: scripts/check-reuse.sh
+
+  dco:
+    name: sign-off
+    # The commits of the pull request, not the history of main: the first
+    # commit of this repository predates the sign-off rule and cannot be
+    # rewritten.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: scripts/check-dco.sh "$BASE..$HEAD"
