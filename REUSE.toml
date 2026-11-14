@@ -1,0 +1,51 @@
+version = 1
+
+# Every file in the tree has a stated licence. Source files say so in a
+# header; the files below cannot carry one, or are better left without.
+# LICENSE and LICENSES/ are the Apache Software Foundation's text, not ours,
+# and are not listed: reuse treats licence files on their own terms. That
+# holds for the copies of LICENSE under python/ too.
+
+[[annotations]]
+path = [
+    "README.md",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "DEPENDENCIES.md",
+    "SECURITY.md",
+    "NOTICE",
+    "AUTHORS",
+    ".gitignore",
+    ".gitattributes",
+    "docs/**",
+    "uv.lock",
+    "scripts/licence-fixtures.json",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "The Oneberth Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# The Python packages' copies of the root's NOTICE and AUTHORS, which their
+# wheels carry (tests/tooling/test_packaging.py holds them to the root's).
+[[annotations]]
+path = [
+    "python/*/NOTICE",
+    "python/*/AUTHORS",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "The Oneberth Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# The npm package's files that carry no comment syntax, are documentation, or
+# are written by a tool. JSON has no comments; .nvmrc holds a version and
+# nothing else; package-lock.json is written by npm.
+[[annotations]]
+path = [
+    "ts/oneberth-protocol/README.md",
+    "ts/oneberth-protocol/package.json",
+    "ts/oneberth-protocol/package-lock.json",
+    "ts/oneberth-protocol/.nvmrc",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "The Oneberth Authors"
+SPDX-License-Identifier = "Apache-2.0"

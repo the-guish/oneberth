@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# The wheels and sdists `uv build` writes.
+dist/
+
+ts/*/node_modules/
+
+# Scratch space: review findings and other working files.
+tmp/

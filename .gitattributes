@@ -1,0 +1,9 @@
+# Line endings, decided here rather than by whoever checks the tree out. The
+# shell scripts and the npm gate are programs the checks run, and a CRLF
+# checkout would stop the first from running at all.
+
+* text=auto
+
+*.sh text eol=lf
+ts/*/scripts/*.mjs text eol=lf
+ts/*/tests/*.mjs text eol=lf
