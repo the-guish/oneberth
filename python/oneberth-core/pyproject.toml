@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright The Oneberth Authors
+
+[build-system]
+requires = ["hatchling>=1.27", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oneberth-core"
+dynamic = ["version"]
+description = "The pure core of the Oneberth app shell: no I/O"
+license = "Apache-2.0"
+# Copies of the root's three files: PEP 639 globs cannot climb out of the
+# project directory. A test holds each copy to the root's.
+license-files = ["LICENSE", "NOTICE", "AUTHORS"]
+authors = [{ name = "The Oneberth Authors" }]
+maintainers = [{ name = "Luis Castro", email = "dev@guish.in" }]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+]
+# None, and none until a pull request of its own adds one (DEPENDENCIES.md).
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/the-guish/oneberth"
+Issues = "https://github.com/the-guish/oneberth/issues"
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { root = "../.." }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oneberth_core"]

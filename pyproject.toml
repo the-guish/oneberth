@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright The Oneberth Authors
+#
+# Workspace root. It ships no code of its own; the distributions live in
+# python/<name>, and all of them take one version from the repository's `v*`
+# tags (hatch-vcs). See CONTRIBUTING.md for the layout.
+
+[tool.uv.workspace]
+members = ["python/*"]
+
+[tool.uv.sources]
+oneberth = { workspace = true }
+oneberth-core = { workspace = true }
+
+[tool.uv]
+# The platforms the project runs on, and the only ones the lock resolves for,
+# as in Robinauts: a package that another platform alone would need is then
+# not locked, and the licence gate reads the lock whole (DEPENDENCIES.md).
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
+]
+
+[dependency-groups]
+dev = [
+    "oneberth",
+    "oneberth-core",
+    # The tests of the checks under scripts/. The ten-day cooldown
+    # (.github/dependabot.yml) holds for a first pin as for a bump: 9.2.0 was
+    # published on 2026-10-27 and adopted on 2026-11-14, and what it brings
+    # (iniconfig 2.3.1, packaging 26.3, pluggy 1.7.0, pygments 2.21.0) was
+    # published on 2026-10-15 or earlier.
+    "pytest>=9.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = ["--strict-config", "--strict-markers"]
+# A warning is a failure: it is fixed, or excepted by name here.
+filterwarnings = ["error"]
+markers = [
+    "io: tests that touch the file system, run a subprocess or read the real tree (slow)",
+]
+xfail_strict = true
