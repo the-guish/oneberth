@@ -1,0 +1,130 @@
+/* Copyright 2026 The oneberth Authors */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * The design tokens: colours, radii and fonts as custom properties
+ * (shell.md, "Styles"). Every application of the shell styles with them.
+ * The values are the palette neorc and Robinauts share.
+ *
+ * The dark values are written once, as `--dark-*`. Two rules turn dark on:
+ * the operating system's choice, unless the toggle chose light, and the
+ * toggle's dark. The toggle sets `data-theme` on <html>.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --ground: #f8f7f4;
+  --paper: #ffffff;
+  --panel: #f2f0eb;
+  --tint: #e7e4dc;
+  --hover: #edeae3;
+  --ink: #1c1b18;
+  --muted: #6f6c66;
+  --line: #e4e1da;
+  --accent: #1c1b18;
+  --on-accent: #ffffff;
+  --link: #1d4ed8;
+  --bad: #b91c1c;
+  --warn-bg: #fff4d6;
+  --warn-ink: #6b4b00;
+  --scrim: rgb(28 27 24 / 45%);
+  /* Under a menu that floats over the page. */
+  --shadow: 0 4px 16px rgb(28 27 24 / 16%);
+  /* The boundary of a control: 3:1 against the surfaces. */
+  --edge: #8a877f;
+  /* A count on the rail. */
+  --badge: #b91c1c;
+  --on-badge: #ffffff;
+
+  --dark-ground: #161512;
+  --dark-paper: #1e1d1a;
+  --dark-panel: #1b1a17;
+  --dark-tint: #2d2b25;
+  --dark-hover: #26241f;
+  --dark-ink: #ecebe6;
+  --dark-muted: #9c9991;
+  --dark-line: #2f2d28;
+  --dark-accent: #ecebe6;
+  --dark-on-accent: #161512;
+  --dark-link: #7fb0ff;
+  --dark-bad: #ef5350;
+  --dark-warn-bg: #4a3a00;
+  --dark-warn-ink: #ffe6a3;
+  --dark-scrim: rgb(0 0 0 / 60%);
+  --dark-shadow: 0 4px 16px rgb(0 0 0 / 50%);
+  --dark-edge: #6d6a63;
+  --dark-badge: #ef5350;
+  --dark-on-badge: #161512;
+
+  --radius: 8px;
+  --radius-card: 10px;
+  --radius-pill: 999px;
+
+  /* System fonts only: nothing comes from another origin. */
+  --sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* The rail's width (shell.md, "The layout"). */
+  --rail-width: 48px;
+
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--ground);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: var(--dark-ground);
+    --paper: var(--dark-paper);
+    --panel: var(--dark-panel);
+    --tint: var(--dark-tint);
+    --hover: var(--dark-hover);
+    --ink: var(--dark-ink);
+    --muted: var(--dark-muted);
+    --line: var(--dark-line);
+    --accent: var(--dark-accent);
+    --on-accent: var(--dark-on-accent);
+    --link: var(--dark-link);
+    --bad: var(--dark-bad);
+    --warn-bg: var(--dark-warn-bg);
+    --warn-ink: var(--dark-warn-ink);
+    --scrim: var(--dark-scrim);
+    --shadow: var(--dark-shadow);
+    --edge: var(--dark-edge);
+    --badge: var(--dark-badge);
+    --on-badge: var(--dark-on-badge);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: var(--dark-ground);
+  --paper: var(--dark-paper);
+  --panel: var(--dark-panel);
+  --tint: var(--dark-tint);
+  --hover: var(--dark-hover);
+  --ink: var(--dark-ink);
+  --muted: var(--dark-muted);
+  --line: var(--dark-line);
+  --accent: var(--dark-accent);
+  --on-accent: var(--dark-on-accent);
+  --link: var(--dark-link);
+  --bad: var(--dark-bad);
+  --warn-bg: var(--dark-warn-bg);
+  --warn-ink: var(--dark-warn-ink);
+  --scrim: var(--dark-scrim);
+  --shadow: var(--dark-shadow);
+  --edge: var(--dark-edge);
+  --badge: var(--dark-badge);
+  --on-badge: var(--dark-on-badge);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}

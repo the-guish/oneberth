@@ -1,0 +1,2 @@
+# Packages the package brings into a host's bundle, written by the build.
+# React and React DOM are peers and are not listed. A new line is reviewed.

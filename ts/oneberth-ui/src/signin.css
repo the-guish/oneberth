@@ -1,0 +1,73 @@
+/* Copyright 2026 The oneberth Authors */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* The sign-in page (`./SignIn.tsx`) and the shell's waiting and failed states. */
+
+.oneberth-signin {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow: auto;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+.oneberth-signin-card {
+  width: 100%;
+  max-width: 24rem;
+  box-sizing: border-box;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+}
+
+.oneberth-signin-title {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.oneberth-signin-text {
+  margin: 0 0 1rem;
+  color: var(--muted);
+}
+
+.oneberth-signin-failed {
+  margin: 0 0 1rem;
+  color: var(--bad);
+}
+
+.oneberth-signin-providers {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oneberth-signin-provider,
+.oneberth-signin-retry {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.oneberth-signin-provider:hover,
+.oneberth-signin-retry:hover {
+  opacity: 0.9;
+}
