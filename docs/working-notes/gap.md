@@ -62,9 +62,10 @@ The copies in lines of code:
 | the security headers on the interface | `manager/_ui.py` | `web/headers.py` | web part |
 | the session in the browser, the sign-in page | `session.ts`, `SignIn.tsx` | `session/`, `devices/` | node package |
 
-The routes stay in each application, and are written again in oneberth's contract:
-`manager/_routes.py` in neorc, 680 lines, and `web/app.py` with `web/worker_api.py` in
-Robinauts, about 1,700 lines.
+The routes stay in each application, on FastAPI: `manager/_routes.py` in neorc, 680 lines,
+and `web/app.py` with `web/worker_api.py` in Robinauts, about 1,700 lines.
+neorc's routes each declare a permission today, with a dependency in `manager/_access.py`.
+That dependency moves to oneberth, and Robinauts' routes gain it.
 
 ## What each application stops having
 
@@ -79,7 +80,7 @@ Robinauts, about 1,700 lines.
 
 | part | nearest code |
 |---|---|
-| the contract and `compose_app` | each application's own FastAPI application |
+| the shape of a component and `compose_app` | each application's own FastAPI application |
 | the SQLite stores | none; Robinauts raises `NotImplementedError` for local storage, and neorc has memory and PostgreSQL |
 | the local sign-in | Robinauts' local user under `--dev-no-sign-in` |
 | roles in Robinauts | none; neorc's routes each declare a permission |
@@ -104,12 +105,12 @@ Robinauts, about 1,700 lines.
 | neorc | `docs/working-notes/sso-plan.md` | superseded by [identity.md](../specs/identity.md) |
 | neorc | `README.md` | the token commands, `--no-auth`, and a stale line that says roles are for later |
 | neorc | `contributing/js-dependencies.md` | the interface is a package too |
-| neorc | `contributing/in-memory-first.md` | a route is declared in oneberth's contract |
+| neorc | `contributing/in-memory-first.md` | oneberth composes the web application |
 | Robinauts | `docs/specs/sign-in.md`, `docs/architecture/device-pairing.md` | superseded by [identity.md](../specs/identity.md) |
 | Robinauts | `docs/specs/core.md` | goal 6, "the system in one page", the planned container image |
 | Robinauts | `docs/specs/frontend.md` | the panel, the tabs, the runtime dependencies, the budget |
 | Robinauts | `docs/specs/operations.md`, `docs/deployment.md` | the shapes, the workers, SQLite |
 | Robinauts | `docs/architecture/orchestration.md` | composed and forwarded; the frame goes away |
-| Robinauts | `docs/architecture/rules.md` | where `oneberth` may be imported; FastAPI, Starlette and uvicorn leave the list |
+| Robinauts | `docs/architecture/rules.md` | where `oneberth` may be imported |
 | Robinauts | `docs/architecture/web.md` | the routes move under `/robinauts/` |
 | Robinauts | `extra-workers/README.md` | who starts a worker, the networks |

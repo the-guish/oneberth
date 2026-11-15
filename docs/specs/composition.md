@@ -7,16 +7,16 @@ oneberth composes one or more components into what a backend serves.
 
 - **Component**: what an application gives oneberth: its name, its routes, its roles and
   what to start and stop.
-- **Contract**: the shapes a component is written in. The contract is part of oneberth and
-  imports no third-party code.
 - **Composition**: the web application oneberth builds from components.
 
-## The rule on the web framework
+## Written once
 
-- oneberth alone imports the web framework: FastAPI, Starlette and uvicorn.
-- neorc and Robinauts import oneberth's contract. Each gets FastAPI through `oneberth[web]`.
-- A check in each repository refuses an import of the three anywhere else.
-- A need the contract lacks is added to the contract.
+- The web framework is FastAPI. An application writes its routes on FastAPI.
+- oneberth holds what both applications need: the composing, the server, the `/auth`
+  routes, who is asking, the check of a permission, the checks on a request, the security
+  headers and the shape of an error. Each is written once.
+- oneberth names FastAPI, Starlette and uvicorn as its dependencies, in `oneberth[web]`.
+  An application gets the three through oneberth and names no version of its own.
 
 ## A component
 
@@ -24,21 +24,17 @@ A component holds:
 
 - its **name**, such as `neorc` or `robinauts`;
 - its **roles and permissions**, as data ([identity.md](identity.md), "Roles");
-- its **routes**;
+- its **routes**, as a FastAPI router;
 - what it **starts and stops** with the backend, such as its stores or neorc's scheduler.
 
-A route holds:
+A route is a FastAPI route. oneberth gives it two things:
 
-- a method and a path;
-- the permission it needs, and the resource the permission applies to;
-- the shapes of its request and of its answer;
-- its kind: a plain answer, a long poll or a stream;
-- its handler.
+- a dependency that declares the permission the route needs, and the resource the
+  permission applies to;
+- a dependency that gives the handler the principal.
 
-A handler is a plain function. It receives the principal and the request's values, and it
-returns data or a stream. It imports nothing of the web framework.
-
-A route without a permission cannot be written.
+Every route declares a permission. `compose_app` refuses a component that has a route
+without one, and the backend does not start.
 
 ## Composing
 
@@ -59,7 +55,8 @@ app = compose_app(
 - It serves the oneberth routes under `/auth`, the interface under `/ui/` and `/health`.
 - It finds who is asking and checks the route's permission before the handler runs.
 - It applies the checks on a write and the security headers ([identity.md](identity.md),
-  "Checks on a request").
+  "Checks on a request"). A page that a route serves with headers of its own keeps them.
+- It limits the size of a body.
 - It builds the front listener and the worker listener ([shapes.md](shapes.md), "Listeners").
 - It writes one OpenAPI document per component.
 - It starts the components in the order given and stops them in reverse.
@@ -95,22 +92,7 @@ another backend ([neorc-in-robinauts.md](neorc-in-robinauts.md), "Forwarded").
   bundle ([shell.md](shell.md)).
 - A composition serves the bundle it is given. Robinauts' wheel holds a bundle with neorc inside.
 
-## What the contract covers
-
-The contract covers what the two applications need:
-
-| need | needed by |
-|---|---|
-| values checked against a shape, in the path, the query and the body | every route |
-| an OpenAPI document, which each interface generates its typed client from | both applications |
-| a stream of events | Robinauts' turns, over AG-UI |
-| a long poll that ends when the client leaves | neorc's events and tasks, Robinauts' change feed |
-| a route left out of the OpenAPI document | Robinauts' worker routes |
-| a page served with headers of its own | the view of an MCP application |
-| a limit on the size of a body | both applications |
-
 ## Details likely to change
 
 - The names `compose_app`, `new_manager_webapp` and `new_robinauts_webapp`.
-- Whether a shape is a dataclass or a model of a validation library.
 - The address of the OpenAPI documents.

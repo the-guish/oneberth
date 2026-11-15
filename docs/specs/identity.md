@@ -111,7 +111,7 @@ Every secret is 256 random bits. The store keeps its SHA-256.
 - Roles are fixed per release. Nobody edits a role in a deployment.
 - A role says whether its grants need a resource. `neorc/worker` needs a queue, and
   `robinauts/worker` needs a worker name.
-- Every route declares the permission it needs. The contract has no route without one
+- Every route declares the permission it needs. `compose_app` refuses a route without one
   ([composition.md](composition.md), "A component").
 - oneberth checks the permission and the resource. The application checks ownership, such as
   whose conversation this is.
@@ -226,12 +226,11 @@ oneberth holds the admin scripts both applications reuse.
 | part | holds | third-party code |
 |---|---|---|
 | core | identities, users, credentials, the allow list, roles; the store port; the memory store; the contract suite | none |
-| contract | the shapes of a component and of a route | none |
 | providers | the OpenID Connect client | `httpx` |
 | configuration | the TOML reader | none |
 | PostgreSQL store | the store on PostgreSQL | `asyncpg` |
 | SQLite store | the store on SQLite | none |
-| web | `compose_app`, the `/auth` routes, who is asking, the checks on a request, the security headers, the server | FastAPI, Starlette, uvicorn |
+| web | the shape of a component, `compose_app`, the `/auth` routes, who is asking, the check of a route's permission, the checks on a request, the security headers, the server | FastAPI, Starlette, uvicorn |
 | admin scripts | the store, token, session and device scripts | none |
 | launcher | [shapes.md](shapes.md), "The launcher" | none |
 
