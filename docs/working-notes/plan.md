@@ -22,7 +22,7 @@
 | the shell | the rail, the session, the sign-in page, the account pages | [shell.md](../specs/shell.md) |
 | neorc | the manager as a component; the role table as data; the interface as a package; a SQLite store | [composition.md](../specs/composition.md), [shell.md](../specs/shell.md) |
 | Robinauts | the backend as a component; a permission on each route; neorc composed into the backend; neorc's components in the interface; a SQLite store | [neorc-in-robinauts.md](../specs/neorc-in-robinauts.md), "Composed" |
-| the desktop | the launcher, the window, the processes shape, the Docker shape with its two networks, untrusted workers in containers | [shapes.md](../specs/shapes.md) |
+| the desktop | the launcher, the window, the processes shape, the Docker shape with workers in containers | [shapes.md](../specs/shapes.md) |
 
 ### Out of this version
 
@@ -31,7 +31,9 @@
 - Two backends on one store, and neorc's own address beside Robinauts'.
 - Workers that the platform starts, with tokens from the platform's secrets.
 - The worker listener as a service of its own, with a network policy.
-- A worker in a VM. The path to the worker listener is open.
+- Untrusted workers: a worker in a VM, the egress proxy that puts real keys in the place of
+  fake ones, and the narrower worker routes. The path between a VM and the worker listener
+  is open.
 - Publishing the packages to PyPI and npm.
 
 ## Pins
@@ -142,27 +144,17 @@ Each step leaves both applications working, with their tests passing.
 
 ### 11. The desktop with Docker
 
-- In oneberth and Robinauts. The step builds the backend's image, the two networks, the
-  worker listener, the narrower worker routes and untrusted workers in containers.
-- Robinauts' worker routes take the owner from the path today. A worker learns an owner's
-  id from each turn it runs, and then lists and reads every session of that owner.
-  An untrusted worker gets the tasks it holds, and their sessions.
-- A worker started by the server inherits the server's environment today, the database URL
-  included. An untrusted worker gets none of it.
+- In oneberth and Robinauts. The step builds the backend's image, the two networks and the
+  worker listener.
+- Every worker of this version is a trusted worker. It holds the credentials it needs and
+  has a way out, on the `app` network. Most people's setup is this one.
+- oneberth's launcher builds the `sandbox` network too. No worker of this version joins it.
 - Robinauts' Docker workers use `--network host` today, which works on Linux alone.
-- Needs one decision: how an untrusted worker reaches a model.
 
 Steps 1 to 7 remove the duplication.
 Steps 8 to 11 are the desktop.
 
 ## Decisions needed
-
-### Before step 11
-
-**How does an untrusted worker reach a model?** It holds none of the operator's keys.
-There are three ways. The worker uses the person's own credentials, as the Claude Code
-worker does. The network lets it reach the model provider alone. Or the backend passes its
-model calls on.
 
 ### After this version
 
@@ -179,3 +171,14 @@ Smaller points, with no decision needed yet:
 ## After this version
 
 The cluster gets a plan of its own. It builds what "Out of this version" lists.
+
+Untrusted workers get a step of their own. It builds:
+
+- A VM for the worker.
+- The egress proxy. The worker's engines hold fake keys, and the proxy puts the real key in
+  the place of each ([shapes.md](../specs/shapes.md), "Trust").
+- The narrower worker routes. Robinauts' worker routes take the owner from the path today.
+  A worker learns an owner's id from each turn it runs, and then lists and reads every
+  session of that owner. An untrusted worker gets the tasks it holds, and their sessions.
+- A worker's own environment. A worker started by the server inherits the server's
+  environment today, the database URL included. An untrusted worker gets none of it.

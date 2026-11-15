@@ -15,7 +15,7 @@ A shape decides who starts a component, where it listens and where the data live
 - A backend may open a **worker listener**. It serves the routes a worker role may call.
 - The routes of the worker listener are derived. Every route declares its permission, and a
   route is served there when a worker role holds that permission.
-- A network that holds untrusted workers reaches the worker listener alone.
+- A network that holds untrusted workers reaches the worker listener and the egress proxy alone.
 - The composition builds both listeners ([composition.md](composition.md), "Composing").
 
 ## Trust
@@ -24,7 +24,7 @@ A shape decides who starts a component, where it listens and where the data live
 |---|---|---|---|
 | trusted | the backend, the manager, the scheduler, the launcher | the database, the operator's secrets | everything |
 | trusted worker | a worker that runs the project's own code | a token, and the keys its engines need | the worker listener, the model providers, the tool servers |
-| untrusted worker | a worker that runs code nobody reviewed, such as code an agent writes | a token | the worker listener |
+| untrusted worker | a worker that runs code nobody reviewed, such as code an agent writes | a token, and fake keys | the worker listener; the model providers, through the egress proxy |
 
 An untrusted worker follows these rules:
 
@@ -32,6 +32,9 @@ An untrusted worker follows these rules:
 - Its token is bound to one queue or to one worker name.
 - It reads only the tasks it holds, and the sessions of those tasks.
 - It holds none of the operator's secrets: no model key, no database URL, no tool server secret.
+- It reaches a model provider through the egress proxy. Its engines hold fake keys, and the
+  proxy puts the real key in the place of each.
+- The egress proxy passes a call on to the model providers alone.
 - It keeps its engines' state in storage of its own.
 
 A token limits every worker, trusted or not. The network is the second limit.
@@ -89,9 +92,12 @@ There are two networks:
 | network | holds | way out |
 |---|---|---|
 | `app` | the backend and the trusted workers' containers | yes |
-| `sandbox` | the backend and the untrusted workers' containers | none |
+| `sandbox` | the backend, the egress proxy and the untrusted workers' containers | the egress proxy alone |
 
-The `sandbox` network is an internal Docker network. Its containers reach the worker listener alone.
+The `sandbox` network is an internal Docker network. Its workers reach the worker listener
+and the egress proxy alone.
+The egress proxy is on both networks. The launcher starts it when the configuration names
+an untrusted worker.
 
 ```mermaid
 flowchart LR
@@ -106,11 +112,13 @@ flowchart LR
     end
     subgraph sandbox network
         uw[untrusted worker]
+        proxy[egress proxy]
     end
     window -- front listener --> backend
     hw -- worker listener --> backend
     tw -- worker listener --> backend
     uw -- worker listener --> backend
+    uw -- model calls --> proxy
     launcher -. starts .-> backend
     launcher -. starts .-> tw
     launcher -. starts .-> uw
@@ -185,6 +193,5 @@ The launch secret, the tokens and the session of a start end at the stop.
 
 ## Open
 
-- How an untrusted worker reaches a model. It holds none of the operator's keys.
 - The path between a VM and the worker listener.
 - The data directory with Docker on macOS: the host directory, or a Docker volume.
