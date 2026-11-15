@@ -36,6 +36,18 @@ Install the packages and the tools into `.venv`, then run the checks CI runs:
     uv run mypy
     uv run pytest
 
+## Tests that need PostgreSQL
+
+The tests of the PostgreSQL store run against a real server. They are marked `postgres`,
+and `uv run pytest -m "not postgres"` leaves them out. Point them at a database they may
+empty:
+
+    export ONEBERTH_TEST_DATABASE_URL=postgresql://postgres:secret@127.0.0.1:5432/oneberth_test
+
+Without the variable, they skip. CI gives them a server.
+
+## Licence headers
+
 New source files start with the licence header:
 
     # Copyright 2026 The oneberth Authors
