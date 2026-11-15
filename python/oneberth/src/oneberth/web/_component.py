@@ -13,6 +13,12 @@ that kind of credential::
     @router.post("/queues/{queue}/claims", dependencies=[permit(CLAIM, "queue")])
     async def claim(queue: str, principal: Asking) -> Claimed: ...
 
+A router may include routers, to any depth. A ``permit`` on an
+``include_router`` call declares the permission of every route under it, and a
+route declares one permit in all::
+
+    router.include_router(runs, prefix="/runs", dependencies=[permit(READ)])
+
 ``compose_app`` serves the router under ``/<name>/``. Before the handler runs,
 and before its body is read, the gate finds who is asking and checks the
 permission on the resource that the path parameter names.

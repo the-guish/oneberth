@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import getpass
 import logging
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import fastapi.routing
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -224,7 +226,7 @@ def compose_app(
         local=local,
     )
 
-    declared: dict[str, list[tuple[APIRoute, Permit]]] = {}
+    declared: dict[str, list[_Declared]] = {}
     for component in apps:
         declared[component.name] = _declared(component, registry, problems)
     if problems:
@@ -298,22 +300,26 @@ def compose_app(
     front.add_middleware(Gate, backend=backend, rules=front_rules, local_host=local)
     front.add_middleware(Shield)
 
+    # The worker listener holds the whole router of a component with a worker
+    # route, and its gate answers 404 for every route of the component that no
+    # worker role may call. A router that includes routers cannot be cut into
+    # its routes without FastAPI's own parts.
     worker = _listener(apps, backend, None)
     worker.add_api_route("/health", _health, include_in_schema=False)
     worker_rules: list[Rule] = []
+    served: set[Rule] = set()
     for component in apps:
-        served = [
-            (route, permit)
-            for route, permit in declared[component.name]
-            if registry.held_by_worker_role(permit.permission)
-        ]
-        if served:
-            sub = APIRouter()
-            sub.routes.extend(route for route, _ in served)
-            prefix = f"/{component.name}"
-            _include(worker, sub, prefix)
-            worker_rules += _rules(prefix, served)
-    worker.add_middleware(Gate, backend=backend, rules=worker_rules)
+        prefix = f"/{component.name}"
+        rules = _rules(prefix, declared[component.name])
+        if any(registry.held_by_worker_role(r.permission or "") for r in rules):
+            _include(worker, component.router, prefix)
+            worker_rules += rules
+            served.update(
+                r for r in rules if registry.held_by_worker_role(r.permission or "")
+            )
+    worker.add_middleware(
+        Gate, backend=backend, rules=worker_rules, served=frozenset(served)
+    )
     worker.add_middleware(Shield)
     for component in apps:
         if component.health is not None:
@@ -328,14 +334,44 @@ def _login_name() -> str | None:
         return None
 
 
+@dataclass(frozen=True, slots=True)
+class _Declared:
+    """A route of a component, its whole path below the component's address,
+    and the permission it declares."""
+
+    path: str
+    methods: frozenset[str]
+    permit: Permit
+
+
+def _routes_of(router: APIRouter) -> Iterable[Any]:
+    """Every route of ``router`` and of the routers it includes, at any depth.
+
+    Each has its whole path, with the prefixes of the routers above it, and the
+    dependencies of every ``include_router`` call above it. From FastAPI 0.141,
+    an included router stays one entry, and ``iter_route_contexts`` walks it.
+    Before 0.141, ``include_router`` copied each route, with that path and
+    those dependencies, into the including router.
+    """
+    walk = getattr(fastapi.routing, "iter_route_contexts", None)
+    if walk is None:
+        return list(router.routes)
+    return list(walk(router.routes))
+
+
 def _declared(
     component: Component, registry: Registry, problems: list[str]
-) -> list[tuple[APIRoute, Permit]]:
-    """Each route of a component and the permission it declares, or the problems."""
-    found: list[tuple[APIRoute, Permit]] = []
-    for route in component.router.routes:
-        if not isinstance(route, APIRoute):
-            path = getattr(route, "path", repr(route))
+) -> list[_Declared]:
+    """Each route of a component and the permission it declares, or the problems.
+
+    A route takes its ``permit`` from its own dependencies, or from those of an
+    ``include_router`` call above it. It declares one in all.
+    """
+    found: list[_Declared] = []
+    for route in _routes_of(component.router):
+        original = getattr(route, "original_route", route)
+        if not isinstance(original, APIRoute):
+            path = getattr(route, "path", None) or getattr(original, "path", original)
             problems.append(
                 f"{component.name}: {path} is not a FastAPI route, and declares "
                 "no permission"
@@ -348,7 +384,10 @@ def _declared(
             problems.append(f"{where} declares no permission: add permit(...)")
             continue
         if len(permits) > 1:
-            problems.append(f"{where} declares {len(permits)} permissions: one, please")
+            problems.append(
+                f"{where} declares {len(permits)} permissions, with those of the "
+                "include_router calls above it: one, please"
+            )
             continue
         (permit,) = permits
         if not registry.has_permission(permit.permission):
@@ -365,19 +404,19 @@ def _declared(
                 "its path"
             )
             continue
-        found.append((route, permit))
+        found.append(_Declared(route.path, frozenset(route.methods or ()), permit))
     return found
 
 
-def _rules(prefix: str, declared: Sequence[tuple[APIRoute, Permit]]) -> list[Rule]:
+def _rules(prefix: str, declared: Sequence[_Declared]) -> list[Rule]:
     return [
         Rule(
             prefix + route.path,
-            frozenset(route.methods or ()),
-            permit.permission,
-            permit.resource,
+            route.methods,
+            route.permit.permission,
+            route.permit.resource,
         )
-        for route, permit in declared
+        for route in declared
     ]
 
 

@@ -154,12 +154,17 @@ class Gate:
         backend: Backend,
         rules: Sequence[Rule],
         local_host: bool = False,
+        served: frozenset[Rule] | None = None,
     ) -> None:
         self.app = app
         self.backend = backend
         self.rules = rules
         self.local_host = local_host
         """Whether the ``Host`` must be ``localhost`` or an IP address."""
+        self.served = served
+        """The rules whose routes this listener serves; ``None`` for all of them.
+        A request that meets another rule first is answered 404, as FastAPI
+        would pick that rule's route."""
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -209,6 +214,8 @@ class Gate:
         rule, path_params = self._rule(scope)
         if rule is None:
             return
+        if self.served is not None and rule not in self.served:
+            raise Refusal(404, "NotFound", "Not Found")
         principal = await backend.principal_of(connection)
         scope[PRINCIPAL_KEY] = principal
         if rule.permission is not None:
