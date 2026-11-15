@@ -41,6 +41,7 @@ from oneberth.launcher._shape import (
     Joined,
     MountPlan,
     Published,
+    container_plan,
     labels_of,
 )
 from oneberth.launcher.testing import StandIns
@@ -187,6 +188,26 @@ def test_a_description_of_containers_is_checked(
     assert problem in found
 
 
+@pytest.mark.parametrize(
+    ("mount", "create"),
+    [
+        (Mount("workers/u1", "/state"), True),
+        (Mount(DATA / "cache", "/cache"), True),
+        (Mount("/srv/models", "/models", read_only=True), False),
+        (Mount("../shared", "/shared"), False),
+    ],
+)
+def test_only_a_directory_of_the_data_directory_is_created_before_a_start(
+    mount: Mount, create: bool
+) -> None:
+    run = Container(IMAGE, ["work"], mounts=[mount])
+    application = desktop(worker("t1", run))
+    plan = container_plan(
+        application, "t1", run, {}, front_port=8420, worker_port=8421, user=None
+    )
+    assert [m.create for m in plan.mounts] == [create]
+
+
 async def test_the_docker_shape_starts_in_order_and_gives_each_part_its_share() -> None:
     stand_ins = StandIns()
     application = desktop(TRUSTED_C, UNTRUSTED_C, PROCESS_W)
@@ -224,7 +245,7 @@ async def test_the_docker_shape_starts_in_order_and_gives_each_part_its_share() 
             "ONEBERTH_FRONT_BIND": "front",
             "ONEBERTH_WORKER_BIND": "0.0.0.0",
         },
-        mounts=(MountPlan(DATA, "/data", False),),
+        mounts=(MountPlan(DATA, "/data", False, create=True),),
         networks=(Joined(app, ("front",)), Joined(sandbox)),
         published=(Published("127.0.0.1", 8420), Published("127.0.0.1", 8421)),
         gateway=True,
@@ -249,7 +270,9 @@ async def test_the_docker_shape_starts_in_order_and_gives_each_part_its_share() 
         False,
         (),
     )
-    assert untrusted.mounts == (MountPlan(DATA / "workers/u1", "/state", False),)
+    assert untrusted.mounts == (
+        MountPlan(DATA / "workers/u1", "/state", False, create=True),
+    )
     assert untrusted.environment == {
         "ENGINE": "echo",
         "ONEBERTH_WORKER_NAME": "u1",

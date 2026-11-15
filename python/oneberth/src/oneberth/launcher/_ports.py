@@ -103,6 +103,7 @@ class Docker(Protocol):
     async def start(self, plan: ContainerPlan, stdin: str | None) -> Running:
         """Create and start a container, attached to its standard output.
 
+        The source of each mount the plan says to create is created first.
         ``stdin`` is written on its standard input, which is then closed. The
         container is removed once it ends. Raises ``LauncherError`` when it
         cannot be started."""

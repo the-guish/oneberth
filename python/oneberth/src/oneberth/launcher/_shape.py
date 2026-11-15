@@ -209,6 +209,9 @@ class MountPlan:
     source: Path
     target: str
     read_only: bool
+    create: bool = False
+    """Whether the source is created before the start: a directory of the data
+    directory, which is the component's own storage."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,12 +296,14 @@ def container_plan(
     """
     data = application.data
     networks = networks_of(application, name)
+    sources = [(mount_source(data, m), m) for m in run.mounts]
     mounts = tuple(
-        MountPlan(mount_source(data, m), m.target, m.read_only) for m in run.mounts
+        MountPlan(source, m.target, m.read_only, source.is_relative_to(data))
+        for source, m in sources
     )
     published: tuple[Published, ...] = ()
     if name == BACKEND:
-        mounts = (MountPlan(data, CONTAINER_DATA_DIR, False), *mounts)
+        mounts = (MountPlan(data, CONTAINER_DATA_DIR, False, True), *mounts)
         published = (Published(LOOPBACK, front_port), Published(LOOPBACK, worker_port))
     return ContainerPlan(
         name=container_name(data, name),

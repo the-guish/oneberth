@@ -3,12 +3,15 @@
 
 """The ``Docker`` port on the ``docker`` command.
 
-Each method translates into ``docker`` commands. A container is created with
-its networks, then started attached to its standard output, with its standard
-input open when it gets a secret. The secret travels on that standard input
-alone: it never appears in a command line, in an environment variable or in
-``docker inspect``. The container's variables reach ``docker create`` in a
-file that is removed once the container exists, and appear in no command line.
+Each method translates into ``docker`` commands. Before a container is
+created, the sources of its mounts that the plan marks are created on the host:
+the logic decides, and only this adapter touches the file system. A container
+is created with its networks, then started attached to its standard output,
+with its standard input open when it gets a secret. The secret travels on that
+standard input alone: it never appears in a command line, in an environment
+variable or in ``docker inspect``. The container's variables reach ``docker
+create`` in a file that is removed once the container exists, and appear in no
+command line.
 
 A container runs with Docker's init, which passes SIGTERM on to the
 component. The launcher's SIGTERM reaches the container through
@@ -208,6 +211,14 @@ class DockerCli:
         await self._ok(*options, plan.name)
 
     async def start(self, plan: ContainerPlan, stdin: str | None) -> ContainerRunning:
+        for mount in plan.mounts:
+            if mount.create:
+                try:
+                    mount.source.mkdir(parents=True, exist_ok=True)
+                except OSError as error:
+                    raise LauncherError(
+                        f"{plan.name} could not be started: {error}"
+                    ) from error
         with tempfile.TemporaryDirectory(prefix="oneberth-") as private:
             env_file = Path(private) / "environment"
             env_file.touch(0o600)

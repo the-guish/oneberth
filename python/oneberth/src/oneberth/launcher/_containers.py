@@ -122,11 +122,6 @@ class DockerRuntime:
             worker_port=self._worker_port,
             user=self._user,
         )
-        data = self._prepared().data
-        for mount in plan.mounts:
-            # A directory of the data directory is the component's own storage.
-            if mount.source.is_relative_to(data):
-                mount.source.mkdir(parents=True, exist_ok=True)
         return await self._docker.start(plan, stdin)
 
     def _prepared(self) -> Application:
