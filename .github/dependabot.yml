@@ -1,0 +1,13 @@
+# Dependency updates for the node package. No version published fewer than
+# 10 days ago is taken: compromised releases are usually withdrawn within days.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /ts/oneberth-ui
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 10
+    groups:
+      ui:
+        patterns: ["*"]
