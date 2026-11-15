@@ -1,0 +1,71 @@
+# Contributing to oneberth
+
+## Branching model
+
+`main` is the only long-lived branch. It is always releasable, and direct pushes to it
+are blocked.
+
+1. Create a short-lived branch from `main` for each change. Prefix it with `feature/`
+   for new functionality or `fix/` for corrections.
+2. Open a pull request against `main`.
+3. A maintainer merges it once the checks pass and the review is done.
+
+## Repository layout
+
+    python/oneberth/   the oneberth Python library
+    ts/                the node packages, with their own tooling
+    docs/specs/        the specs: the desired state, and the authority
+
+The Python packages form a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/).
+The root `pyproject.toml` holds the ruff, mypy and pytest configuration and the one `uv.lock`.
+
+A base install of `oneberth` brings no third-party code. Each adapter that needs some is
+an extra, such as `oneberth[postgres]`. A distribution ships its own copies of `LICENSE`,
+`NOTICE` and `AUTHORS`, and CI checks that they match the root's.
+
+Test modules have names unique across the repository, such as `test_identity_rules.py`.
+pytest and mypy collect them in one run. Shared fixtures go in the root `conftest.py`.
+
+## The checks
+
+Install the packages and the tools into `.venv`, then run the checks CI runs:
+
+    uv sync
+    uv run ruff check
+    uv run ruff format --check
+    uv run mypy
+    uv run pytest
+
+New source files start with the licence header:
+
+    # Copyright 2026 The oneberth Authors
+    # SPDX-License-Identifier: Apache-2.0
+
+## In memory first
+
+The logic lives in the core, behind ports. The core imports no database driver, web
+framework or HTTP client.
+
+- An adapter stores or moves data. An `if` about users, credentials or roles belongs in
+  the core.
+- The store is one port. Each method is one atomic operation, and the core never chains
+  several calls into one that must be atomic.
+- The memory store keeps the semantics of the deployed stores: the same expiry, the same
+  limits, the same answers.
+- The suite in `oneberth.identity.testing.contracts` binds the stores together. The memory
+  store runs it here, and every other store runs the same suite.
+- The core reads the time from an injected clock. Tests move the clock; they never sleep.
+- Most tests run in memory, in milliseconds. A test of an adapter covers only what the
+  adapter adds: SQL, transport, its own concurrency.
+
+## Developer Certificate of Origin
+
+Every contribution is signed off under the
+[Developer Certificate of Origin 1.1](https://developercertificate.org/).
+Add `-s` to your commit:
+
+    git commit -s -m "area: short summary"
+
+Git then appends a `Signed-off-by` line. Use your real name and a reachable email
+address. If you contribute on behalf of an employer, make sure you have their
+authorization.

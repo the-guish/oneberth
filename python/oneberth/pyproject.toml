@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.27", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oneberth"
+dynamic = ["version"]
+description = "Sign-in, tokens, roles and the web application shared by neorc and Robinauts"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "AUTHORS"]
+authors = [{ name = "The oneberth Authors" }]
+maintainers = [{ name = "Luis Castro", email = "dev@guish.in" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+# A base install brings no third-party code: the identity core, the
+# configuration reader, the SQLite store, the admin scripts and the launcher
+# use the standard library alone. See docs/specs/identity.md.
+dependencies = []
+
+# Each adapter that needs third-party code is an extra.
+[project.optional-dependencies]
+# The OpenID Connect client.
+providers = ["httpx>=0.28"]
+# The store on PostgreSQL.
+postgres = ["asyncpg>=0.32.0"]
+# compose_app, the /auth routes and the server; an application gets FastAPI,
+# Starlette and uvicorn through it.
+web = ["fastapi>=0.120", "uvicorn>=0.38"]
+
+[project.urls]
+Homepage = "https://github.com/the-guish/oneberth"
+Issues = "https://github.com/the-guish/oneberth/issues"
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { root = "../.." }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oneberth"]
