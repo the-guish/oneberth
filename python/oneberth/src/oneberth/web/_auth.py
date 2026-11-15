@@ -566,7 +566,10 @@ async def remove_device(
     await backend_of(request).access.remove_device(principal, device_id)
 
 
-# Service tokens, for a principal with oneberth/tokens:manage.
+# Service tokens (identity.md, "Service tokens"). The core decides who may:
+# a principal with oneberth/tokens:manage lists them, and an admin's browser
+# session or the launch secret creates and revokes them. An admin's bearer is
+# answered 403.
 
 
 @router.get("/services")

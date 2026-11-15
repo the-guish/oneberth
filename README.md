@@ -14,7 +14,9 @@ It ships two packages:
 
 - The identity core, `oneberth.identity`: users, the four kinds of credential, device
   pairing, the allow list, roles and the decision of a permission. It runs on a store
-  port, with a memory store and the store's contract suite.
+  port, with a memory store and the store's contract suite. A service token is created
+  and revoked by the operator, by the launch secret, or by an admin from a browser
+  session. A bearer of that admin creates and revokes none.
 - The stores: `oneberth.identity.postgres`, in the PostgreSQL schema `oneberth`, and
   `oneberth.identity.sqlite`, in the file `oneberth.db`. Both pass the contract suite.
   `oneberth.stores.opened_store` opens either for a backend. Its `schema` names

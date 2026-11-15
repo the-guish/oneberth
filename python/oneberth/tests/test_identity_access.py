@@ -470,6 +470,68 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
     assert worker.grant == Grant("neorc/worker", "q")
 
 
+async def bearers_of(access: Access, admin: Principal) -> dict[str, Principal]:
+    """Every credential of an admin that comes as a bearer: a personal token,
+    a linked phone, and the session as another backend forwards it."""
+    token, _ = await access.mint_personal_token(admin, "laptop")
+    code, pairing = await access.begin_pairing(admin)
+    claimed = await access.claim_pairing(code, PHONE)
+    await access.approve_pairing(admin, pairing.id, claimed.number)
+    session = (await access.sign_in(ADA)).secret
+    return {
+        "personal token": await access.authenticate(token, bearer=True),
+        "device": await access.authenticate(claimed.secret, bearer=True),
+        "forwarded session": await access.authenticate(session, bearer=True),
+    }
+
+
+async def test_a_bearer_of_an_admin_creates_and_revokes_no_service_token(
+    access: Access,
+) -> None:
+    admin = await browser(access)
+    _, kept = await access.create_service_token("kept", "neorc/ci", by=admin)
+
+    for kind, by in (await bearers_of(access, admin)).items():
+        assert access.allows(by, TOKENS_MANAGE), kind
+        with pytest.raises(BearerRefusedError, match="browser"):
+            await access.create_service_token("stolen", "neorc/ci", by=by)
+        with pytest.raises(BearerRefusedError, match="browser"):
+            await access.revoke_service_token(kept.id, by=by)
+        # A list mints and removes nothing.
+        assert [t.name for t in await access.service_tokens(by=by)] == ["kept"], kind
+    assert [t.name for t in await access.service_tokens(by=OPERATOR)] == ["kept"]
+
+
+async def test_a_service_token_is_created_from_a_session_younger_than_ten_minutes(
+    access: Access, clock: ManualClock
+) -> None:
+    admin = await browser(access)
+    _, token = await access.create_service_token("ci", "neorc/ci", by=admin)
+    clock.advance(timedelta(minutes=10))
+
+    with pytest.raises(FreshSignInRequiredError):
+        await access.create_service_token("late", "neorc/ci", by=admin)
+    # Taking access away needs no fresh sign-in.
+    await access.revoke_service_token(token.id, by=admin)
+
+    assert await access.service_tokens(by=admin) == []
+
+
+async def test_a_service_token_manages_no_service_token(access: Access) -> None:
+    secret, token = await access.create_service_token("ci", "neorc/ci", by=OPERATOR)
+    service = await access.authenticate(secret, bearer=True)
+
+    # No role a service token may carry holds the permission.
+    for role in access.registry.service_roles:
+        assert TOKENS_MANAGE not in role.permissions, role.name
+    with pytest.raises(PermissionDeniedError, match="service tokens"):
+        await access.create_service_token("more", "neorc/ci", by=service)
+    with pytest.raises(PermissionDeniedError, match="service tokens"):
+        await access.revoke_service_token(token.id, by=service)
+    with pytest.raises(PermissionDeniedError, match="service tokens"):
+        await access.service_tokens(by=service)
+
+
 REFUSED_TOKENS = pytest.mark.parametrize(
     ("name", "role", "resource", "expires_in", "problem"),
     [
@@ -924,6 +986,25 @@ async def test_the_local_user_revokes_a_token_the_launcher_minted(
     await local.revoke_service_token(token.id, by=person)
     with pytest.raises(AuthenticationError):
         await local.authenticate(secret, bearer=True)
+
+
+async def test_the_local_user_manages_service_tokens_in_the_window_alone(
+    local: Access, clock: ManualClock
+) -> None:
+    person = await window(local)
+    script, _ = await local.mint_personal_token(person, "script")
+    by_script = await local.authenticate(script, bearer=True)
+    # No ten-minute rule in the local mode.
+    clock.advance(timedelta(hours=30))
+    _, token = await local.create_service_token("ci", "neorc/ci", by=person)
+
+    with pytest.raises(BearerRefusedError):
+        await local.create_service_token("more", "neorc/ci", by=by_script)
+    with pytest.raises(BearerRefusedError):
+        await local.revoke_service_token(token.id, by=by_script)
+    assert [t.name for t in await local.service_tokens(by=by_script)] == ["ci"]
+    # The launch secret is a bearer, and the one that manages them.
+    await local.revoke_service_token(token.id, by=await launcher(local))
 
 
 @pytest.mark.parametrize("by_launcher", [True, False])

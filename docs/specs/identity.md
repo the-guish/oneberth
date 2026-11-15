@@ -81,7 +81,7 @@ Every secret is 256 random bits. The store keeps its SHA-256.
 | session | a user | a sign-in | `session_hours`, 12 by default | a cookie |
 | personal token | a user | that user, in the browser | 90 days | a bearer |
 | device session | a user | a pairing that user approved in the browser | `device_days`, 30 by default | a bearer |
-| service token | a service | an admin, the operator or the launcher | set when created | a bearer |
+| service token | a service | an admin in the browser, the operator or the launcher | set when created | a bearer |
 
 - A secret starts with a prefix that names its kind. The prefix picks where a bearer is looked up.
 - A session has a fixed life and no renewal.
@@ -89,8 +89,7 @@ Every secret is 256 random bits. The store keeps its SHA-256.
 - A service token has one role and, when the role needs one, one resource.
 - **A person's credentials are minted from that person's browser session.** The session must
   be younger than ten minutes. A bearer that asks is answered 403.
-- A service token is minted by a principal with `oneberth/tokens:manage`: an admin in the
-  interface, or the launcher. The operator also creates one with the command line.
+- A service token is created and revoked as ["Service tokens"](#service-tokens) says.
 - A token the launcher mints ends when the application stops.
 - Taking access away needs no fresh sign-in.
 
@@ -109,6 +108,9 @@ Every secret is 256 random bits. The store keeps its SHA-256.
 - An application declares its permissions and roles as data when its backend starts.
   A name starts with the application's name: `neorc/runs:start`, `neorc/worker`.
 - Roles are fixed per release. Nobody edits a role in a deployment.
+- A role is for people or for services. A person holds roles for people, and a service token
+  carries a role for services.
+- A role holds permissions of its own application alone.
 - A role says whether its grants need a resource. `neorc/worker` needs a queue, and
   `robinauts/worker` needs a worker name.
 - Every route declares the permission it needs. `compose_app` refuses a route without one
@@ -137,6 +139,34 @@ The roles at the start:
 `neorc-core` holds neorc's permission table as plain data and asks its decisions through a port.
 The `neorc` application registers the table with oneberth and gives the port its answer.
 
+## Service tokens
+
+Who manages them:
+
+- `oneberth/tokens:manage` is the permission to create, list and revoke service tokens.
+- Two roles hold it: `oneberth/admin` and `oneberth/launcher`. No role of an application can.
+- An admin creates and revokes a service token from their browser session. Creating one
+  needs a session younger than ten minutes, as a person's own credentials do.
+- A bearer of an admin creates and revokes none. A personal token, a device session and a
+  forwarded session are each answered 403.
+- A bearer that holds the permission lists the service tokens. A list shows no secret.
+- The launch secret is a bearer, and it creates and revokes them. It exists in the local
+  mode alone.
+- The operator manages them with the command line, on the store.
+- A backend makes the token of its own requests in its own memory. No request asks for one.
+
+What a new one carries:
+
+- A service token carries one role for services. The table above names them: the roles
+  given to a service token.
+- A service token never carries a role for people, such as `neorc/user` or `oneberth/admin`.
+- No service token carries `oneberth/launcher`. The launch secret alone holds it.
+- No service token therefore holds `oneberth/tokens:manage`, and none creates another.
+- The application of the role may refuse a token. neorc refuses a worker token for a queue
+  nobody declared.
+- A service token lives as long as its creator says. One created without a life lasts until
+  it is revoked.
+
 ## Checks on a request
 
 - A write is `application/json`. Any other content type is refused.
@@ -161,7 +191,7 @@ A composition serves these under `/auth`.
 | `POST /auth/logout` | ends the session, or the device that asks |
 | `POST`, `GET /auth/tokens`, `DELETE /auth/tokens/{id}` | personal tokens |
 | `/auth/pairings…`, `/auth/devices…` | device pairing and the linked devices |
-| `/auth/services…` | service tokens, for a principal with `oneberth/tokens:manage` |
+| `/auth/services…` | service tokens ("Service tokens") |
 | `POST /auth/tickets` | a ticket, for the launch secret alone |
 
 ## Between two backends
@@ -169,7 +199,8 @@ A composition serves these under `/auth`.
 - The backends of a deployment trust the same store.
 - A backend that forwards a person's request sends that person's credential as a bearer.
   The receiving backend finds it in the store and decides the permission itself.
-- A forwarded session counts as a bearer. It mints and removes nothing.
+- A forwarded session counts as a bearer. It mints and removes nothing: no credential of
+  the person, and no service token.
 - A backend's own requests use a service token of its own.
 
 ## Configuration
@@ -249,3 +280,5 @@ oneberth holds the admin scripts both applications reuse.
 - Sign-out at the identity provider.
 - A limit on the rate of sign-ins.
 - Sign-in through a provider on the desktop.
+- The credential of the desktop's admin scripts. A personal token of the local user lists
+  service tokens, and creates and revokes none.

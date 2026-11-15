@@ -548,6 +548,59 @@ async def test_a_credential_is_minted_from_a_session_younger_than_ten_minutes(
         assert (await client.get("/auth/tokens")).json() == {"items": []}
 
 
+async def test_a_bearer_of_an_admin_creates_and_revokes_no_service_token(
+    samples: Samples, memory: MemoryIdentityStore
+) -> None:
+    config = config_for("notes", public_url=PUBLIC_URL, admins=["ada"])
+    composition = compose(samples, memory, config=config)
+    new = {"name": "stolen", "role": "notes/reader"}
+    async with running(composition) as client, client_of(composition) as script:
+        session = await signed_in(composition, client)
+        personal = (await client.post("/auth/tokens", json={"name": "t"})).json()
+        kept = (
+            await client.post("/auth/services", json={**new, "name": "kept"})
+        ).json()
+        # The admin's personal token, and the session as a backend forwards it.
+        for secret in (personal["secret"], session):
+            sent = bearer(secret)
+            made = await script.post("/auth/services", json=new, headers=sent)
+            revoked = await script.delete(f"/auth/services/{kept['id']}", headers=sent)
+            listed = await script.get("/auth/services", headers=sent)
+            for refused in (made, revoked):
+                assert (refused.status_code, refused.json()["error"]) == (
+                    403,
+                    "BearerRefused",
+                ), refused.text
+            assert [s["name"] for s in listed.json()["items"]] == ["kept"]
+        # The browser's session still revokes it.
+        gone = await client.delete(f"/auth/services/{kept['id']}")
+
+    assert gone.status_code == 204
+
+
+async def test_a_service_token_is_created_from_a_session_younger_than_ten_minutes(
+    samples: Samples, memory: MemoryIdentityStore
+) -> None:
+    clock = ManualClock()
+    config = config_for("notes", public_url=PUBLIC_URL, admins=["ada"])
+    composition = compose(samples, memory, config=config, clock=clock)
+    async with running(composition) as client:
+        await signed_in(composition, client)
+        made = await client.post(
+            "/auth/services", json={"name": "ci", "role": "notes/reader"}
+        )
+        clock.advance(timedelta(minutes=10))
+        stale = await client.post(
+            "/auth/services", json={"name": "late", "role": "notes/reader"}
+        )
+        # Taking access away needs no fresh sign-in.
+        revoked = await client.delete(f"/auth/services/{made.json()['id']}")
+
+    assert made.status_code == 201, made.text
+    assert (stale.status_code, stale.json()["error"]) == (403, "FreshSignInRequired")
+    assert revoked.status_code == 204
+
+
 async def test_a_secure_origin_sets_the_host_prefixed_cookie(
     samples: Samples, memory: MemoryIdentityStore
 ) -> None:
