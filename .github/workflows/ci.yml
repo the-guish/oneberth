@@ -8,9 +8,13 @@ on:
 permissions:
   contents: read
 
+# Every job has a time limit, so that a hang fails the job instead of holding a
+# runner for hours. A passing lint job took about 15 s, and a test job about a
+# minute before the Docker tests came; those add under a minute.
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,6 +36,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

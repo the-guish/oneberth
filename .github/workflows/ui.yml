@@ -11,6 +11,8 @@ permissions:
 jobs:
   ui:
     runs-on: ubuntu-latest
+    # A passing run takes about 30 s; the limit ends a hang.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: ts/oneberth-ui
