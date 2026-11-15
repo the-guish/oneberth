@@ -22,6 +22,7 @@ export {
   ADMIN_ROLE,
   hasRole,
   loadSession,
+  resetSession,
   signOut,
   useSession,
   userOf,

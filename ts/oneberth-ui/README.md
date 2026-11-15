@@ -48,6 +48,8 @@ createRoot(root).render(<Shell apps={apps} title="Robinauts" />);
   signs the person out of the page.
 - Every class name of the package starts with `oneberth-`. An application
   styles with the tokens of `tokens.css`, such as `var(--panel)`.
+- The session store is module-wide. A host's tests call `resetSession()`
+  after each test, and the next render asks `GET /auth/session` again.
 
 ## Installing it from a checkout
 

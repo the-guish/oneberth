@@ -143,7 +143,10 @@ export function startSession(): Promise<void> {
   return loadSession();
 }
 
-/** Back to a freshly loaded page; for tests. */
+/**
+ * Back to a freshly loaded page, for tests. The session store is module-wide:
+ * a host's tests call this after each test, and the next render asks again.
+ */
 export function resetSession(): void {
   started = false;
   publish(LOADING);

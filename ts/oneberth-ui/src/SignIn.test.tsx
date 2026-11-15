@@ -1,9 +1,10 @@
 // Copyright 2026 The oneberth Authors
 // SPDX-License-Identifier: Apache-2.0
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ShellApp } from "./apps";
+import { resetSession } from "./index";
 import { Shell } from "./Shell";
 import { GENERIC_SIGN_IN_ERROR, SIGN_IN_ERRORS } from "./SignIn";
 import { serve } from "./test/server";
@@ -17,6 +18,17 @@ function openAt(path: string) {
 }
 
 describe("the sign-in page", () => {
+  it("is asked for again after resetSession, as a host's next test needs", async () => {
+    serve();
+    openAt("/ui/#/alpha");
+    expect(await screen.findByText("Alpha")).toBeInTheDocument();
+    cleanup();
+    resetSession();
+    serve({ signedIn: false });
+    openAt("/ui/#/alpha");
+    expect(await screen.findByRole("heading", { name: "Sign in to Test" })).toBeInTheDocument();
+  });
+
   it("stands in place of every page, with a link per provider back to where the person was", async () => {
     load.mockClear();
     serve({ signedIn: false });
