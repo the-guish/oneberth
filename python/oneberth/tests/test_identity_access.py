@@ -429,9 +429,14 @@ async def test_the_operator_makes_a_worker_token_bound_to_one_queue(
     for permission, resource in (
         ("neorc/tasks:claim", "default"),
         ("neorc/runs:start", None),
+        # A request that names no queue serves every queue: not a worker's.
+        ("neorc/tasks:claim", None),
     ):
         with pytest.raises(PermissionDeniedError):
             access.authorize(worker, permission, resource)
+    # A route that acts on the worker's own queue says so, and reads it.
+    access.authorize(worker, "neorc/tasks:claim", bound=True)
+    assert not access.allows(worker, "neorc/runs:start", bound=True)
     with pytest.raises(PermissionDeniedError, match="no personal credentials"):
         await access.personal_tokens(worker)
     assert access.bound_resource(worker, "neorc/tasks:claim") == "python-gpu"

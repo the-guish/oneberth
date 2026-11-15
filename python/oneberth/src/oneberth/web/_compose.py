@@ -495,6 +495,7 @@ def _rules(prefix: str, declared: Sequence[_Declared]) -> list[Rule]:
             route.methods,
             route.permit.permission,
             route.permit.resource,
+            route.permit.bound,
         )
         for route in declared
     ]

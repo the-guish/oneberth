@@ -19,6 +19,14 @@ route declares one permit in all::
 
     router.include_router(runs, prefix="/runs", dependencies=[permit(READ)])
 
+A grant bound to one resource, such as a worker's to its queue, passes a route
+whose path names that resource. A route that names none refuses such a grant,
+unless it declares ``bound=True``: it then acts on the grant's own resource,
+which its handler reads with ``Access.bound_resource``::
+
+    @router.post("/tasks/{task}/claim", dependencies=[permit(CLAIM, bound=True)])
+    async def claim(task: str, principal: Asking) -> None: ...
+
 ``compose_app`` serves the router under ``/<name>/``. Before the handler runs,
 and before its body is read, the gate finds who is asking and checks the
 permission on the resource that the path parameter names.
@@ -99,11 +107,21 @@ class Component:
 
 @dataclass(frozen=True, slots=True)
 class Permit:
-    """What a route declares: the permission it needs, and the path parameter
-    that names the resource the permission applies to."""
+    """What a route declares: the permission it needs, and the resource the
+    permission applies to. The resource is the one a path parameter names, or,
+    with ``bound``, the one the principal's own grant is bound to."""
 
     permission: str
     resource: str | None = None
+    bound: bool = False
+
+    def __post_init__(self) -> None:
+        if self.bound and self.resource is not None:
+            raise ValueError(
+                f"permit({self.permission!r}): the resource comes from the path "
+                f"parameter {self.resource!r} or from the principal's grant, "
+                "not from both"
+            )
 
 
 async def asking(request: Request) -> Principal:
@@ -139,19 +157,28 @@ FreshBrowsing = Annotated[Principal, Depends(browsing_fresh)]
 Device = Annotated[Principal, Depends(device)]
 
 
-def permit(permission: str, resource: str | None = None) -> Any:
+def permit(permission: str, resource: str | None = None, *, bound: bool = False) -> Any:
     """A dependency that declares the permission a route needs.
 
     ``resource`` names the path parameter that holds the resource, such as
-    ``"queue"`` for ``/queues/{queue}/…``. Its value is the principal. The gate
-    has checked the permission before the handler runs; this checks it again,
-    so the route holds outside a composition too.
+    ``"queue"`` for ``/queues/{queue}/…``. A route without one serves every
+    resource: a principal whose grant is bound to one resource, such as a
+    worker to its queue, is refused there.
+
+    ``bound`` is for a route that names no resource and acts on the one the
+    principal's grant is bound to. A bound grant then passes, and the handler
+    confines what it does to ``Access.bound_resource``. A route declares
+    ``resource`` or ``bound``, never both.
+
+    Its value is the principal. The gate has checked the permission before the
+    handler runs; this checks it again, so the route holds outside a
+    composition too.
     """
-    declared = Permit(permission, resource)
+    declared = Permit(permission, resource, bound)
 
     async def permitted(request: Request, principal: Asking) -> Principal:
         value = request.path_params.get(resource) if resource is not None else None
-        backend_of(request).access.authorize(principal, permission, value)
+        backend_of(request).access.authorize(principal, permission, value, bound=bound)
         return principal
 
     setattr(permitted, PERMIT_MARK, declared)

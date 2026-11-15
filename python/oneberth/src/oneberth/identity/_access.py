@@ -610,20 +610,33 @@ class Access:
                 del self._checks[stale]
 
     def allows(
-        self, principal: Principal, permission: str, resource: str | None = None
+        self,
+        principal: Principal,
+        permission: str,
+        resource: str | None = None,
+        *,
+        bound: bool = False,
     ) -> bool:
         """Whether ``principal`` holds ``permission`` on ``resource``.
 
-        ``resource`` is ``None`` for a request that names none
-        (``Registry.allows``).
+        ``resource`` is ``None`` for a request that names none: a grant bound
+        to one resource then holds only with ``bound``, for a request that
+        acts on that grant's own resource (``Registry.allows``).
         """
-        return self._registry.allows(principal.grants, permission, resource)
+        return self._registry.allows(
+            principal.grants, permission, resource, bound=bound
+        )
 
     def authorize(
-        self, principal: Principal, permission: str, resource: str | None = None
+        self,
+        principal: Principal,
+        permission: str,
+        resource: str | None = None,
+        *,
+        bound: bool = False,
     ) -> None:
         """Raise ``PermissionDeniedError`` unless ``principal`` holds ``permission``."""
-        if not self.allows(principal, permission, resource):
+        if not self.allows(principal, permission, resource, bound=bound):
             on = "" if resource is None else f" on {resource!r}"
             raise PermissionDeniedError(f"{principal.name} may not {permission}{on}")
 
@@ -674,8 +687,10 @@ class Access:
         """The one resource ``principal`` may use ``permission`` on, such as a
         worker's queue; ``None`` when it may use it on every resource.
 
-        Raises ``PermissionDeniedError`` when it may not use it at all, or when
-        its grants name several resources, so the request must name one.
+        A route that asked ``authorize`` with ``bound`` confines its request
+        to this resource. Raises ``PermissionDeniedError`` when the principal
+        may not use the permission at all, or when its grants name several
+        resources, so the request must name one.
         """
         holds, resource = self._registry.bound_resource(principal.grants, permission)
         if not holds:

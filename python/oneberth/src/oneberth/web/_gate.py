@@ -106,6 +106,9 @@ class Rule:
     methods: frozenset[str]
     permission: str | None = None
     resource: str | None = None
+    bound: bool = False
+    """Whether the route acts on the resource of the principal's own grant.
+    A route that names no resource refuses a bound grant otherwise."""
 
     def matches(self, scope: Scope) -> dict[str, Any] | None:
         """The path parameters of a request this route serves; ``None`` otherwise."""
@@ -221,7 +224,10 @@ class Gate:
         if rule.permission is not None:
             resource = path_params.get(rule.resource) if rule.resource else None
             backend.access.authorize(
-                principal, rule.permission, None if resource is None else str(resource)
+                principal,
+                rule.permission,
+                None if resource is None else str(resource),
+                bound=rule.bound,
             )
 
     def _rule(self, scope: Scope) -> tuple[Rule | None, dict[str, Any]]:

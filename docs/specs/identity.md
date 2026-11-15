@@ -113,6 +113,13 @@ Every secret is 256 random bits. The store keeps its SHA-256.
 - A role holds permissions of its own application alone.
 - A role says whether its grants need a resource. `neorc/worker` needs a queue, and
   `robinauts/worker` needs a worker name.
+- A grant with a resource holds on that resource alone. It passes a route whose path names
+  that resource.
+- A route that names no resource serves every resource. It refuses a grant with a resource:
+  a worker of one queue cannot list the runs of every queue.
+- A route may declare that it acts on the resource of the caller's own grant, as a worker's
+  claim of a task does. It then passes that grant, and its handler reads the resource from
+  the grant.
 - Every route declares the permission it needs. `compose_app` refuses a route without one
   ([composition.md](composition.md), "A component").
 - oneberth checks the permission and the resource. The application checks ownership, such as

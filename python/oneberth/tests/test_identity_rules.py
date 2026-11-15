@@ -344,7 +344,7 @@ WORKER = frozenset({Grant("neorc/worker", "python-gpu")})
         (USER | {Grant("robinauts/admin")}, "robinauts/config:edit", None, True),
         (WORKER, "neorc/tasks:claim", "python-gpu", True),
         (WORKER, "neorc/tasks:claim", "default", False),
-        (WORKER, "neorc/tasks:claim", None, True),
+        (WORKER, "neorc/tasks:claim", None, False),
         (WORKER, "neorc/runs:read", "python-gpu", False),
         (frozenset({Grant("oneberth/launcher")}), TOKENS_MANAGE, None, True),
         (frozenset({Grant("oneberth/admin")}), TOKENS_MANAGE, None, True),
@@ -358,6 +358,23 @@ def test_a_decision(
     grants: frozenset[Grant], permission: str, resource: str | None, expected: bool
 ) -> None:
     assert REGISTRY.allows(grants, permission, resource) is expected
+
+
+@pytest.mark.parametrize(
+    ("grants", "permission", "resource", "expected"),
+    [
+        (WORKER, "neorc/tasks:claim", None, True),
+        (WORKER, "neorc/tasks:claim", "python-gpu", True),
+        (WORKER, "neorc/tasks:claim", "default", False),
+        (WORKER, "neorc/runs:read", None, False),
+        (USER, "neorc/runs:start", None, True),
+        (USER, "neorc/tasks:claim", None, False),
+    ],
+)
+def test_a_bound_grant_holds_without_a_resource_where_the_request_says_bound(
+    grants: frozenset[Grant], permission: str, resource: str | None, expected: bool
+) -> None:
+    assert REGISTRY.allows(grants, permission, resource, bound=True) is expected
 
 
 @pytest.mark.parametrize(

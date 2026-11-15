@@ -202,8 +202,9 @@ class Registry:
         """Whether ``grants`` hold ``permission``, and the one resource they
         confine it to; ``None`` when a grant holds it on every resource.
 
-        A worker's route that names no resource in its path reads it from here,
-        as neorc's worker reads its queue from its token.
+        A route that acts on the resource of the principal's own grant reads it
+        from here, as neorc's worker reads its queue from its token. Such a
+        route asks ``allows`` with ``bound``.
         """
         bound: set[str] = set()
         for grant in grants:
@@ -243,20 +244,36 @@ class Registry:
             )
 
     def allows(
-        self, grants: Iterable[Grant], permission: str, resource: str | None = None
+        self,
+        grants: Iterable[Grant],
+        permission: str,
+        resource: str | None = None,
+        *,
+        bound: bool = False,
     ) -> bool:
         """Whether ``grants`` hold ``permission``, on ``resource``.
 
-        A grant bound to a resource holds on that resource alone. A request that
-        names no resource is allowed by a bound grant too: the application then
-        reads the resource from the principal's grant, as a worker's route reads
-        its queue. An unknown permission or role allows nothing.
+        A grant for every resource holds on any, and on a request that names
+        none. A grant bound to a resource holds on that resource alone: a
+        request that names no resource is refused for it, so that a worker of
+        one queue cannot use what serves every queue.
+
+        ``bound`` says that the request acts on the resource of the principal's
+        own grant, as a worker's route acts on its queue. A bound grant then
+        holds without a ``resource``, and the application confines the request
+        to the resource ``bound_resource`` gives. An unknown permission or role
+        allows nothing.
         """
         for grant in grants:
             role = self._roles.get(grant.role)
             if role is None or permission not in role.permissions:
                 continue
-            if grant.resource is None or resource is None or resource == grant.resource:
+            if grant.resource is None:
+                return True
+            if resource is None:
+                if bound:
+                    return True
+            elif resource == grant.resource:
                 return True
         return False
 
