@@ -1,4 +1,4 @@
-# oneberth specs, second set
+# oneberth specs
 
 These specs describe one pattern for three repositories: oneberth, neorc and Robinauts.
 They cover sign-in, tokens, roles, the web application, the application shell and the
@@ -25,5 +25,6 @@ The pattern holds in four shapes:
 ## What a spec holds
 
 - A spec describes the desired state: how the three projects work with the pattern in place.
-- A spec says nothing of the code as it is. [review.md](review.md) is the one document here that does.
+- A spec says nothing of the code as it is. The review and the plan are in
+  [working-notes](../working-notes/).
 - The specs of neorc and Robinauts are the authority on each application's own behaviour.

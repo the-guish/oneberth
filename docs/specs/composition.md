@@ -81,9 +81,9 @@ standalone neorc and in Robinauts.
 
 | backend | components |
 |---|---|
-| Robinauts | `robinauts`, `neorc` |
-| standalone neorc | `neorc` |
-| Robinauts beside a manager deployed apart | `robinauts`, and a forwarding component named `neorc` |
+| Robinauts on the desktop | `robinauts`, `neorc` |
+| Robinauts in a cluster | `robinauts`, and a forwarding component named `neorc` |
+| standalone neorc, and neorc's manager in a cluster | `neorc` |
 
 The forwarding component is oneberth's. It serves `/neorc/` by passing each request to
 another backend ([neorc-in-robinauts.md](neorc-in-robinauts.md), "Forwarded").

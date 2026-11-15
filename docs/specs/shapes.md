@@ -45,19 +45,19 @@ A token limits every worker, trusted or not. The network is the second limit.
 
 ## The cluster
 
-- The platform runs each part as a workload of its own: the backend, with several
-  replicas; one scheduler; each worker; and neorc's manager, when it is deployed apart.
+- The platform runs each part as a workload of its own: Robinauts' backend, with several
+  replicas; neorc's manager; one scheduler; each worker.
 - The database is PostgreSQL. One database holds three schemas: `robinauts`, `neorc`, `oneberth`.
 - People sign in through identity providers. TLS ends in front of the backends.
-- Each application has a public URL of its own. Robinauts' backend composes neorc's manager,
-  or forwards `/neorc/` to a manager deployed apart ([neorc-in-robinauts.md](neorc-in-robinauts.md)).
+- Each application has a public URL of its own. Robinauts' backend forwards `/neorc/` to
+  neorc's manager ([neorc-in-robinauts.md](neorc-in-robinauts.md)).
 - The operator creates the service tokens with the command line. The platform keeps them as
   secrets and gives each to its workload as a file.
 - The worker listener is a service of its own, kept off the public entry. A network policy
   lets the worker workloads reach that service alone.
 - One image per application serves the cluster and the desktop's Docker shape.
 - A single server is a supported shape too. `robinauts start` uses the launcher there for
-  its own processes, behind a reverse proxy.
+  its own processes, behind a reverse proxy, and composes neorc's manager as the desktop does.
 
 ## The desktop, as processes
 

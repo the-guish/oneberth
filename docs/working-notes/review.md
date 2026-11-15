@@ -1,4 +1,4 @@
-# Review of the second set of specs
+# Review of the specs
 
 ## The request
 
@@ -35,7 +35,7 @@ The request is consistent in its direction and feasible.
   One owner of the routes makes a permission per route a matter of structure.
 - **Twelve points needed a decision.** The request left them open or stated them two ways.
   ["Decisions taken in the specs"](#decisions-taken-in-the-specs) lists each with its reason.
-- **Eight questions stay open** (["Open questions"](#open-questions)).
+- **Seven questions stay open** (["Open questions"](#open-questions)).
 - **Four pieces are most of the work**: oneberth's contract for routes, the SQLite stores,
   neorc's interface as components, and the launcher with its Docker shape.
 
@@ -117,14 +117,13 @@ What each application stops having:
 **C1. "A single place" and "a library" are two different things.**
 A library runs inside each backend, and a cluster may have two backends.
 The specs read "a single place" as one code base and one store per deployment
-([identity.md](identity.md), "One store per deployment").
+([identity.md](../specs/identity.md), "One store per deployment").
 A person is then one user in both applications.
 
 **C2. The request states two ways to serve neorc.**
 Point 7 has Robinauts forward to neorc's backend. Point 5 composes both applications in one.
-The specs take composition as the rule. A composed backend serves both applications from
-one process, in the cluster too. Forwarding stays for a manager deployed apart, as a
-component of oneberth's. The cluster's choice is open (Q8).
+The specs keep both. The desktop composes: one process serves both applications.
+The cluster forwards to neorc's manager, through a component of oneberth's.
 Robinauts mounts neorc's manager by hand today, inside an adapter of 401 lines.
 `compose_app` does the same for any set of components.
 
@@ -139,7 +138,7 @@ the manager's routes and stores are in `neorc`. `neorc-core` alone would bring t
 
 **C5. neorc ships a third thing.**
 The request lists `neorc-core` and the standalone application. Robinauts embeds neorc's
-components, and those need a node package ([shell.md](shell.md), "The neorc interface as a package").
+components, and those need a node package ([shell.md](../specs/shell.md), "The neorc interface as a package").
 
 **C6. Two sign-ins need one store.**
 The request lets a person open Robinauts' URL or neorc's own. Each origin has its own
@@ -149,12 +148,12 @@ one set of roles. Two separate stores would make two users.
 **C7. The desktop has no sign-in today, and untrusted workers need one.**
 Both applications run without credentials on one machine today. An untrusted worker beside
 such a backend acts as the person. The specs sign the desktop's person in locally and
-give every worker a token ([identity.md](identity.md), "Locally").
+give every worker a token ([identity.md](../specs/identity.md), "Locally").
 
 **C8. A backend in a container cannot start containers.**
 Robinauts' server starts its workers itself today. The request moves the server into a
 container when a Docker worker exists. The specs give the starting to a launcher on the
-host, in both desktop shapes ([shapes.md](shapes.md), "The launcher").
+host, in both desktop shapes ([shapes.md](../specs/shapes.md), "The launcher").
 
 **C9. FastAPI is declared once.**
 An application that imports a package declares it. Importing FastAPI through oneberth alone
@@ -177,8 +176,8 @@ account button and the theme toggle for all applications, and stays shown with o
 
 **C13. "The same version" needs a check.**
 Nothing stops a cluster from running two versions. The forwarding component compares versions
-and answers 503 for `/neorc/` while they differ ([neorc-in-robinauts.md](neorc-in-robinauts.md), "One version").
-A composed backend holds one version by construction.
+and answers 503 for `/neorc/` while they differ ([neorc-in-robinauts.md](../specs/neorc-in-robinauts.md), "One version").
+The desktop holds one version by construction.
 
 **C14. Four current rules change.**
 Robinauts' specs say these today, and each one changes:
@@ -191,7 +190,7 @@ the local mode "is not a way to deploy"; the interface's only runtime dependenci
 **F1. "Only oneberth imports FastAPI" makes the contract a small web framework.**
 This is the large part of oneberth. neorc declares 680 lines of routes on FastAPI today, and
 Robinauts about 1,700. An application that may not import FastAPI needs everything from the contract.
-[composition.md](composition.md), "What the contract covers", lists the needs found in the code:
+[composition.md](../specs/composition.md), "What the contract covers", lists the needs found in the code:
 checked values, the OpenAPI documents, streams, long polls, hidden routes, a page with its
 own headers, and a limit on a body.
 The work is feasible. neorc's routes are thin by rule: each parses a request and calls one method.
@@ -216,7 +215,7 @@ neorc pins React 19.0.8 and Robinauts 19.3.1. The three repositories move React 
 **F4. Forwarding is feasible, with one limit to watch.**
 The forwarding component passes long polls through. A browser allows six connections per
 origin over HTTP/1.1, and a Robinauts tab already holds two. neorc's long poll makes three.
-A hidden application stops its long polls ([shell.md](shell.md), "An application in the shell").
+A hidden application stops its long polls ([shell.md](../specs/shell.md), "An application in the shell").
 
 **F5. SQLite on a directory shared with a container needs a test.**
 The request moves the backend into a container, and the data has to follow.
@@ -270,7 +269,7 @@ Each decision fills a gap in the request. Any of them can be overturned.
 | | decision | why |
 |---|---|---|
 | D1 | oneberth is a library, with one store per deployment | C1, C6 |
-| D2 | Robinauts composes neorc's manager into its backend; a forwarding component serves a manager deployed apart | C2 |
+| D2 | The desktop composes neorc's manager into Robinauts' backend; the cluster forwards to it | C2 |
 | D3 | Robinauts depends on `neorc`; `neorc-core` keeps its role table as data | C3, C4 |
 | D4 | neorc ships its interface as a node package too | C5 |
 | D5 | A forwarded request is sent with the person's credential, and neorc decides the permission | neorc's route table stays in one place; no master key exists |
@@ -310,12 +309,6 @@ One way keeps neorc's form and lets the host fill the lists.
 without sign-in. With sign-in the handler's token decides: the token of the person who
 started the run, or a service of its own.
 
-**Q8. Does the cluster compose or forward?** A composed backend is one deployment with no
-forwarding and no version check. Each Robinauts replica then runs neorc's manager, and
-neorc's PostgreSQL notifier is built for several manager processes on one database.
-Forwarding keeps the manager as a deployment of its own, which scales and restarts apart
-from Robinauts.
-
 Smaller points, with no decision needed yet:
 
 - Windows is not a target of Robinauts today. A desktop application makes the question larger.
@@ -330,11 +323,11 @@ Smaller points, with no decision needed yet:
 | repository | document | what changes |
 |---|---|---|
 | neorc | `docs/specs/roles.md` | the roles become oneberth roles; tokens gain routes and a page |
-| neorc | `docs/working-notes/sso-plan.md` | superseded by [identity.md](identity.md) |
+| neorc | `docs/working-notes/sso-plan.md` | superseded by [identity.md](../specs/identity.md) |
 | neorc | `README.md` | the token commands, `--no-auth`, and a stale line that says roles are for later |
 | neorc | `contributing/js-dependencies.md` | the interface is a package too |
 | neorc | `contributing/in-memory-first.md` | a route is declared in oneberth's contract |
-| Robinauts | `docs/specs/sign-in.md`, `docs/architecture/device-pairing.md` | superseded by [identity.md](identity.md) |
+| Robinauts | `docs/specs/sign-in.md`, `docs/architecture/device-pairing.md` | superseded by [identity.md](../specs/identity.md) |
 | Robinauts | `docs/specs/core.md` | goal 6, "the system in one page", the planned container image |
 | Robinauts | `docs/specs/frontend.md` | the panel, the tabs, the runtime dependencies, the budget |
 | Robinauts | `docs/specs/operations.md`, `docs/deployment.md` | the shapes, the workers, SQLite |
@@ -345,26 +338,4 @@ Smaller points, with no decision needed yet:
 
 ## Order of work
 
-Each step leaves both applications working.
-
-1. **oneberth's identity core**, in memory, with its contract suite. It takes neorc's core
-   and adds Robinauts' users, pairing and the check at every use.
-2. **The PostgreSQL store, the provider adapter and the admin scripts.**
-3. **The contract and `compose_app`**, written from the routes both applications have today.
-4. **neorc adopts oneberth.** `neorc-core` loses the identity core and keeps its role table.
-   The manager becomes a component.
-5. **`@oneberth/ui`**: the session, the sign-in page, the shell and the account pages.
-   neorc's interface adopts it and becomes a package.
-6. **Robinauts adopts oneberth**, in the backend and in the interface. Its web application
-   becomes a component, and its routes declare permissions.
-7. **neorc inside Robinauts with credentials**: Robinauts composes both components, and its
-   interface shows neorc's components. The frame and the copied navigation go away.
-8. **The SQLite stores**: oneberth's, neorc's, Robinauts'.
-9. **The launcher, the local sign-in and the window**, in the processes shape.
-10. **The backend's image and the Docker shape**, after the test of F5. The worker listener
-    and the narrower worker routes come with it.
-11. **The cluster**: workers as workloads of their own, with tokens from the platform's
-    secrets, and the forwarding component if Q8 asks for it.
-
-Steps 1 to 7 remove the duplication and serve the cluster.
-Steps 8 to 10 are the desktop.
+[plan.md](plan.md) holds the steps of this version.

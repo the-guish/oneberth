@@ -56,7 +56,7 @@ flowchart TD
 ```
 
 Robinauts depends on `neorc`, the application.
-Robinauts composes neorc's manager into its backend, and the manager's routes and
+The desktop composes neorc's manager into Robinauts' backend, and the manager's routes and
 stores live in `neorc`.
 
 `neorc-core` imports nothing of oneberth. It names its permissions and roles as plain data, and
@@ -101,7 +101,7 @@ The node packages follow the same direction. The neorc interface package names
 | who starts the components | the platform | the launcher | the launcher |
 | database | PostgreSQL | SQLite | SQLite |
 | the backend runs as | containers | one process | one container |
-| neorc's manager | composed into the backend, or a deployment of its own | composed into the backend | composed into the backend |
+| neorc's manager | a deployment of its own; Robinauts forwards to it | composed into Robinauts' backend | composed into Robinauts' backend |
 | sign-in | identity providers | local | local |
 | the interface opens in | any browser | the window | the window |
 | workers run as | containers | processes | containers and processes |

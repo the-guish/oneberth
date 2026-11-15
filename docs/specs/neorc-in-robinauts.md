@@ -8,13 +8,14 @@ components over that address ([shell.md](shell.md)).
 
 | | composed | forwarded |
 |---|---|---|
-| used by | the desktop, and a cluster that wants one backend | a cluster whose manager is deployed apart |
+| used by | the desktop | the cluster |
 | neorc's manager runs | inside Robinauts' backend process | as a deployment of its own |
 | a request crosses | a function call | HTTP |
 | the component named `neorc` | neorc's own, from `new_manager_webapp` | oneberth's forwarding component |
 
 - The interface sees the same address and the same answers both ways.
-- The choice is made where the backend is composed ([composition.md](composition.md), "The compositions").
+- The shape decides the way, where the backend is composed ([composition.md](composition.md),
+  "The compositions").
 - Robinauts imports neorc in two places: where it composes, and in `orchestrator/adapters/neorc/`.
 
 ## Composed
@@ -22,9 +23,8 @@ components over that address ([shell.md](shell.md)).
 - Robinauts composes its own component with neorc's. One process serves both.
 - Every request to `/neorc/` is checked for its credential and its neorc permission, like
   any other route of the composition.
-- neorc's records are in the database of the backend: `neorc.db`, or the schema `neorc`.
-- neorc's scheduler is one of the things neorc's component starts on the desktop. A cluster
-  runs it as a workload of its own, once.
+- neorc's records are in the database of the backend, in the file `neorc.db`.
+- neorc's scheduler is one of the things neorc's component starts.
 - neorc's worker routes are served on the worker listener ([shapes.md](shapes.md), "Listeners").
 
 ## Forwarded
@@ -50,7 +50,7 @@ components over that address ([shell.md](shell.md)).
 
 ## neorc's own address
 
-- A cluster may also run standalone neorc at a public URL of its own.
+- The cluster's manager is standalone neorc. It serves its own interface at a public URL of its own.
   A person opens Robinauts' URL for both applications, or neorc's URL for neorc alone.
 - Both addresses sign in from the same store. A person is the same user at both, with the same roles.
 - Each origin has its own session. A person signs in once per origin, and the provider's
@@ -77,5 +77,4 @@ components over that address ([shell.md](shell.md)).
 
 ## Open
 
-- Whether a cluster composes neorc's manager or forwards to one deployed apart.
 - Whose conversations a flow handler creates.
