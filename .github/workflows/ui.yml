@@ -34,7 +34,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - name: The package's gate: its peers, its files and its size budget
+      - name: The package's gate, over its peers, its files and its size budget
         run: npm run build
       - name: The bundled-package list is committed as the gate wrote it
         run: git diff --exit-code -- bundled-packages.txt
