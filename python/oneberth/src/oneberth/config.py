@@ -152,13 +152,23 @@ class Config:
         return f"{self.app(app).public_url}/auth/callback/{provider}"
 
     def access(
-        self, store: IdentityStore, registry: Registry, *, clock: Clock = system_clock
+        self,
+        store: IdentityStore,
+        registry: Registry,
+        *,
+        clock: Clock = system_clock,
+        local: bool = False,
     ) -> Access:
         """The ``Access`` this configuration describes, on ``store``.
 
-        Raises ``ConfigError`` when a ``[[grant]]`` names a role the registry
-        does not have, or one that is not for people.
+        ``local`` asks for the local mode. Raises ``ConfigError`` when a
+        ``[[grant]]`` names a role the registry does not have, or one that is
+        not for people, and when the local mode meets providers or an allow list.
         """
+        if local and self.providers:
+            raise ConfigError(
+                ["the local mode signs in through no provider: drop [providers]"]
+            )
         try:
             return Access(
                 store,
@@ -167,9 +177,26 @@ class Config:
                 clock=clock,
                 session_hours=self.session_hours,
                 device_days=self.device_days,
+                local=local,
             )
         except InvalidValueError as error:
             raise ConfigError([str(error)]) from None
+
+
+def local_config(*names: str, port: int, host: str = "127.0.0.1") -> Config:
+    """The configuration of the local mode: each of ``names`` at
+    ``http://{host}:{port}``, with no provider and no allow list.
+
+    The desktop needs no file: its backend is on a loopback address, and its
+    one user signs in with a ticket. Raises ``ConfigError`` for a host that is
+    not loopback.
+    """
+    try:
+        shown = f"[{host}]" if ":" in host else host
+        public_url = normalise_origin(f"http://{shown}:{port}")
+    except ValueError as error:
+        raise ConfigError([f"the local mode: {error}"]) from None
+    return Config(apps={name: AppConfig(name, public_url) for name in names})
 
 
 def load_config(

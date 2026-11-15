@@ -11,6 +11,7 @@ the time from its injected clock, and hands the store every id and every time.
 
 from __future__ import annotations
 
+import hmac
 import math
 import re
 import secrets
@@ -46,9 +47,16 @@ from oneberth.identity._records import (
     Session,
     User,
 )
-from oneberth.identity._roles import TOKENS_MANAGE, Grant, Registry
+from oneberth.identity._roles import (
+    LAUNCHER_ROLE,
+    TICKETS_CREATE,
+    TOKENS_MANAGE,
+    Grant,
+    Registry,
+)
 from oneberth.identity._secrets import (
     MAX_SECRET_LENGTH,
+    PREFIXES,
     CredentialKind,
     kind_of,
     new_secret,
@@ -81,6 +89,17 @@ MAX_LIFE = timedelta(days=5 * 366)
 
 LOCAL_PROVIDER = "!local"
 """The provider of the local user. No configured provider is spelt so."""
+LOCAL_SUBJECT = "local"
+"""The subject of the local user, under ``LOCAL_PROVIDER``."""
+TICKET_LIFE = timedelta(minutes=1)
+"""How long a ticket of the local mode works."""
+MAX_TICKETS = 16
+"""How many tickets may wait at once."""
+LAUNCHER_NAME = "launcher"
+"""The name the launch secret's principal goes by."""
+_LAUNCH_SECRET_MIN = 43
+"""The shortest random part a launch secret may have: 256 bits, as
+``new_secret`` makes it."""
 
 _SERVICE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 _MAX_TOKEN_NAME = 100
@@ -209,8 +228,41 @@ def check_life(span: timedelta, what: str) -> timedelta:
     return span
 
 
+def is_launch_secret(text: str) -> bool:
+    """Whether ``text`` may be a launch secret: its prefix, then 256 random bits
+    or more, URL-safe."""
+    prefix = PREFIXES[CredentialKind.LAUNCH]
+    rest = text[len(prefix) :]
+    return (
+        text.startswith(prefix)
+        and _LAUNCH_SECRET_MIN <= len(rest) <= MAX_SECRET_LENGTH - len(prefix)
+        and _URL_SAFE.fullmatch(rest) is not None
+    )
+
+
+_URL_SAFE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+@dataclass(slots=True)
+class _Launch:
+    """What the local mode keeps in memory for one start of the backend."""
+
+    launcher: ServiceToken
+    """The launch secret's credential: its hash, and the launcher's role."""
+    user: User
+    tickets: dict[str, datetime]
+    """The hash of each ticket waiting, and when it ends."""
+    tokens: dict[str, ServiceToken]
+    """The service tokens the launcher minted, by hash. They end at the stop."""
+
+
 class Access:
-    """Users, credentials and roles, on one store, under one policy."""
+    """Users, credentials and roles, on one store, under one policy.
+
+    In the local mode, the deployment has one user, the person at the machine,
+    who holds every role a person can hold. ``start_local`` takes the launch
+    secret, and ``stop_local`` ends what the start made.
+    """
 
     def __init__(
         self,
@@ -222,11 +274,17 @@ class Access:
         session_hours: float = DEFAULT_SESSION_HOURS,
         device_days: float = DEFAULT_DEVICE_DAYS,
         max_pending_sign_ins: int = MAX_PENDING_SIGN_INS,
+        local: bool = False,
     ) -> None:
         policy = Policy() if policy is None else policy
         policy.check(registry)
         if max_pending_sign_ins < 1:
             raise InvalidValueError("at least one sign-in must be allowed at once")
+        if local and (policy.allow or policy.grants):
+            raise InvalidValueError(
+                "the local mode has one user and no allow list: drop [[allow]] and "
+                "[[grant]]"
+            )
         self._store = store
         self._registry = registry
         self._policy = policy
@@ -236,6 +294,8 @@ class Access:
         self._max_pending = max_pending_sign_ins
         self._checks: dict[uuid.UUID, tuple[frozenset[Grant], datetime]] = {}
         self._swept_at: datetime | None = None
+        self._local = local
+        self._launch: _Launch | None = None
 
     @property
     def store(self) -> IdentityStore:
@@ -257,8 +317,112 @@ class Access:
     def device_life(self) -> timedelta:
         return self._device_life
 
+    @property
+    def local(self) -> bool:
+        """Whether this is the local mode: one user, signed in with a ticket."""
+        return self._local
+
     def now(self) -> datetime:
         return self._clock()
+
+    # The local mode.
+
+    async def start_local(self, launch_secret: str, *, name: str | None = None) -> User:
+        """Take the launch secret of this start, and set up the local user.
+
+        The local user is a real row under ``LOCAL_PROVIDER``, refreshed with
+        ``name``. The sessions an earlier start left end here: a local session
+        lasts until the application stops. Raises ``InvalidValueError`` for a
+        launch secret that is not one, or outside the local mode.
+        """
+        if not self._local:
+            raise InvalidValueError("a launch secret is for the local mode alone")
+        if not is_launch_secret(launch_secret):
+            raise InvalidValueError(
+                "the launch secret must be "
+                f"{PREFIXES[CredentialKind.LAUNCH]} and 256 random bits, URL-safe"
+            )
+        now = self.now()
+        user = await self._store.upsert_user(
+            Identity(LOCAL_PROVIDER, LOCAL_SUBJECT, name=name),
+            user_id=uuid.uuid4(),
+            now=now,
+        )
+        await self._store.delete_sessions()
+        launcher = ServiceToken(
+            id=uuid.uuid4(),
+            name=LAUNCHER_NAME,
+            grant=Grant(LAUNCHER_ROLE),
+            secret_hash=secret_hash(launch_secret),
+            created_at=now,
+        )
+        self._launch = _Launch(launcher, user, tickets={}, tokens={})
+        return user
+
+    async def stop_local(self) -> None:
+        """End the launch secret, the tickets, the launcher's tokens and every
+        session of this start."""
+        if self._launch is None:
+            return
+        self._launch = None
+        await self._store.delete_sessions()
+
+    def _started(self) -> _Launch:
+        if self._launch is None:
+            raise PermissionDeniedError(
+                "the local mode is off, or it has no launch secret yet"
+            )
+        return self._launch
+
+    async def create_ticket(self, principal: Principal) -> tuple[str, datetime]:
+        """A ticket that signs the local user in once, within ``TICKET_LIFE``,
+        and when it ends. The holder of the launch secret asks for it."""
+        launch = self._started()
+        self.authorize(principal, TICKETS_CREATE)
+        now = self.now()
+        for hashed, ends in list(launch.tickets.items()):
+            if ends <= now:
+                del launch.tickets[hashed]
+        if len(launch.tickets) >= MAX_TICKETS:
+            raise BusyError(f"{MAX_TICKETS} tickets wait already: use one first")
+        ticket = random_secret()
+        expires_at = now + TICKET_LIFE
+        launch.tickets[secret_hash(ticket)] = expires_at
+        return ticket, expires_at
+
+    async def take_ticket(self, ticket: str) -> SignedIn:
+        """A session of the local user for ``ticket``, once.
+
+        Raises ``AuthenticationError`` for a ticket unknown, used or expired.
+        """
+        launch = self._launch
+        if launch is None or not ticket or len(ticket) > MAX_SECRET_LENGTH:
+            raise AuthenticationError("the ticket is unknown, used or expired")
+        now = self.now()
+        ends = launch.tickets.pop(secret_hash(ticket), None)
+        if ends is None or ends <= now:
+            raise AuthenticationError("the ticket is unknown, used or expired")
+        secret = new_secret(CredentialKind.SESSION)
+        session = Session(
+            id=uuid.uuid4(),
+            user_id=launch.user.id,
+            secret_hash=secret_hash(secret),
+            created_at=now,
+            # It lasts until the application stops, which ends every session.
+            expires_at=now + MAX_LIFE,
+        )
+        await self._store.add_session(session)
+        grants = self._local_grants()
+        return SignedIn(
+            secret, Principal(session, grants, bearer=False, user=launch.user)
+        )
+
+    def _local_grants(self) -> frozenset[Grant]:
+        return _grants(self._registry.people_roles)
+
+    def _is_launcher(self, by: Principal) -> bool:
+        launch = self._launch
+        return launch is not None and by.credential is launch.launcher
 
     # Signing in through a provider.
 
@@ -314,6 +478,8 @@ class Access:
         """
         if identity.provider == LOCAL_PROVIDER:
             raise InvalidValueError(f"no provider signs anyone in as {LOCAL_PROVIDER}")
+        if self._local:
+            raise InvalidValueError("the local mode signs its user in with a ticket")
         now = self.now()
         roles = roles_of(identity, self._policy, self._registry.default_roles)
         if roles is None:
@@ -355,8 +521,19 @@ class Access:
         now = self.now()
         hashed = secret_hash(secret)
         found: tuple[User, Session | PersonalToken | DeviceSession] | None
+        launch = self._launch
         match kind:
+            case CredentialKind.LAUNCH:
+                if launch is None or not hmac.compare_digest(
+                    hashed, launch.launcher.secret_hash
+                ):
+                    raise AuthenticationError("the launch secret is not this start's")
+                launcher = launch.launcher
+                return Principal(launcher, frozenset({launcher.grant}), bearer=True)
             case CredentialKind.SERVICE_TOKEN:
+                launched = None if launch is None else launch.tokens.get(hashed)
+                if launched is not None:
+                    return Principal(launched, frozenset({launched.grant}), bearer=True)
                 token = await self._store.service_token_by_hash(hashed, now)
                 if token is None:
                     raise AuthenticationError(
@@ -383,6 +560,10 @@ class Access:
         A user the allow list refuses loses every credential, so an entry put
         back revives none.
         """
+        if user.provider == LOCAL_PROVIDER:
+            if not self._local:
+                raise AuthenticationError("the local user signs in in the local mode")
+            return self._local_grants()
         checked = self._checks.get(user.id)
         if checked is not None and timedelta(0) <= now - checked[1] < ALLOW_CHECK_EVERY:
             return checked[0]
@@ -449,7 +630,12 @@ class Access:
             raise BearerRefusedError(
                 "a person's credentials are minted and removed from their browser"
             )
-        if fresh and not is_fresh(principal.credential.created_at, self.now()):
+        # The local mode skips the rule: a new ticket would prove nothing more.
+        if (
+            fresh
+            and not self._local
+            and not is_fresh(principal.credential.created_at, self.now())
+        ):
             raise FreshSignInRequiredError(
                 "sign in again: the session must be younger than "
                 f"{FRESH_SIGN_IN.seconds // 60} minutes"
@@ -638,7 +824,9 @@ class Access:
     ) -> tuple[str, ServiceToken]:
         """A new service token and its secret, which is shown once.
 
-        ``by`` holds ``oneberth/tokens:manage``, or is the ``OPERATOR``.
+        ``by`` holds ``oneberth/tokens:manage``, or is the ``OPERATOR``. A
+        token the launcher mints is kept in memory, and ends when the
+        application stops.
         """
         self._managing(by)
         if not is_service_name(name):
@@ -648,9 +836,13 @@ class Access:
             )
         grant = Grant(role, resource)
         self._registry.check_grant(grant)
+        if role == LAUNCHER_ROLE:
+            raise InvalidValueError(f"the launch secret alone holds {LAUNCHER_ROLE}")
         if expires_in is not None:
             check_life(expires_in, "a service token's life")
         now = self.now()
+        if not isinstance(by, Operator) and self._is_launcher(by):
+            return self._launched_token(name, grant, now, expires_in)
         secret = new_secret(CredentialKind.SERVICE_TOKEN)
         token = ServiceToken(
             id=uuid.uuid4(),
@@ -664,14 +856,42 @@ class Access:
             raise InvalidValueError(f"a service token called {name!r} exists")
         return secret, token
 
+    def _launched_token(
+        self, name: str, grant: Grant, now: datetime, expires_in: timedelta | None
+    ) -> tuple[str, ServiceToken]:
+        launch = self._started()
+        if any(token.name == name for token in launch.tokens.values()):
+            raise InvalidValueError(f"a service token called {name!r} exists")
+        secret = new_secret(CredentialKind.SERVICE_TOKEN)
+        token = ServiceToken(
+            id=uuid.uuid4(),
+            name=name,
+            grant=grant,
+            secret_hash=secret_hash(secret),
+            created_at=now,
+            expires_at=None if expires_in is None else now + expires_in,
+        )
+        launch.tokens[token.secret_hash] = token
+        return secret, token
+
     async def service_tokens(self, *, by: Principal | Operator) -> list[ServiceToken]:
+        """Every service token, by name: the store's, and the launcher's."""
         self._managing(by)
-        return await self._store.service_tokens()
+        stored = await self._store.service_tokens()
+        if self._launch is None:
+            return stored
+        launched = list(self._launch.tokens.values())
+        return sorted([*stored, *launched], key=lambda token: (token.name, token.id))
 
     async def revoke_service_token(
         self, token_id: uuid.UUID, *, by: Principal | Operator
     ) -> None:
         self._managing(by)
+        if self._launch is not None:
+            for hashed, token in list(self._launch.tokens.items()):
+                if token.id == token_id:
+                    del self._launch.tokens[hashed]
+                    return
         if not await self._store.delete_service_token(token_id):
             raise NotFoundError("there is no such service token")
 

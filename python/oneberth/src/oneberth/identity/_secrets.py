@@ -25,7 +25,7 @@ MAX_SECRET_LENGTH = 256
 
 
 class CredentialKind(StrEnum):
-    """The four kinds of credential."""
+    """The four kinds of credential, and the launch secret."""
 
     SESSION = "session"
     """A browser's sign-in. Sent as a cookie, or forwarded as a bearer."""
@@ -35,6 +35,9 @@ class CredentialKind(StrEnum):
     """A linked phone. Sent as a bearer."""
     SERVICE_TOKEN = "service_token"
     """A program's token, bound to one role. Sent as a bearer."""
+    LAUNCH = "launch"
+    """The launch secret of a backend in the local mode. Made by the launcher,
+    kept in the backend's memory alone, and sent as a bearer."""
 
 
 PREFIXES: dict[CredentialKind, str] = {
@@ -42,6 +45,7 @@ PREFIXES: dict[CredentialKind, str] = {
     CredentialKind.PERSONAL_TOKEN: "ob_pat_",
     CredentialKind.DEVICE: "ob_dev_",
     CredentialKind.SERVICE_TOKEN: "ob_svc_",
+    CredentialKind.LAUNCH: "ob_lch_",
 }
 
 

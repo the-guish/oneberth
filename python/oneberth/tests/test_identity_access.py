@@ -443,14 +443,13 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
 ) -> None:
     admin = await browser(access)
     person = await browser(access, BOB)
-    launcher_secret, _ = await access.create_service_token(
-        "launcher", "oneberth/launcher", expires_in=timedelta(hours=1), by=OPERATOR
+    ci_secret, _ = await access.create_service_token(
+        "ci", "neorc/user", expires_in=timedelta(hours=1), by=OPERATOR
     )
-    launcher = await access.authenticate(launcher_secret, bearer=True)
 
-    _, by_admin = await access.create_service_token("ci", "neorc/user", by=admin)
-    _, by_launcher = await access.create_service_token(
-        "w1", "neorc/worker", resource="q", by=launcher
+    _, by_admin = await access.create_service_token("cd", "neorc/user", by=admin)
+    _, worker = await access.create_service_token(
+        "w1", "neorc/worker", resource="q", by=admin
     )
     with pytest.raises(PermissionDeniedError, match="tokens"):
         await access.create_service_token("x", "neorc/user", by=person)
@@ -458,15 +457,15 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
         await access.service_tokens(by=person)
 
     assert access.allows(admin, TOKENS_MANAGE)
-    names = [t.name for t in await access.service_tokens(by=launcher)]
-    assert names == ["ci", "launcher", "w1"]
+    names = [t.name for t in await access.service_tokens(by=admin)]
+    assert names == ["cd", "ci", "w1"]
     await access.revoke_service_token(by_admin.id, by=admin)
     with pytest.raises(NotFoundError):
         await access.revoke_service_token(by_admin.id, by=admin)
     clock.advance(timedelta(hours=1))
     with pytest.raises(AuthenticationError, match="service token"):
-        await access.authenticate(launcher_secret, bearer=True)
-    assert by_launcher.grant == Grant("neorc/worker", "q")
+        await access.authenticate(ci_secret, bearer=True)
+    assert worker.grant == Grant("neorc/worker", "q")
 
 
 @pytest.mark.parametrize(
@@ -479,6 +478,7 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
         ("w", "neorc/user", None, timedelta(0), "life"),
         ("w", "neorc/user", None, timedelta(days=5 * 366 + 1), "life"),
         ("taken", "neorc/user", None, None, "exists"),
+        ("l", "oneberth/launcher", None, None, "launch secret alone"),
     ],
 )
 async def test_a_service_token_refused(
@@ -600,3 +600,267 @@ def test_a_fresh_session(age: timedelta, expected: bool) -> None:
 )
 def test_a_typed_number(typed: str, expected: str | None) -> None:
     assert typed_number(typed) == expected
+
+
+# The local mode.
+
+LAUNCH = "ob_lch_" + "a" * 43
+
+
+@pytest.fixture
+async def local(store: MemoryIdentityStore, clock: ManualClock) -> Access:
+    access = Access(store, Registry([ONEBERTH_ROLES, NEORC]), clock=clock, local=True)
+    await access.start_local(LAUNCH, name="Ada")
+    return access
+
+
+async def launcher(access: Access, secret: str = LAUNCH) -> Principal:
+    return await access.authenticate(secret, bearer=True)
+
+
+async def window(access: Access) -> Principal:
+    """The local user's window, signed in with a ticket from the launcher."""
+    ticket, _ = await access.create_ticket(await launcher(access))
+    signed_in = await access.take_ticket(ticket)
+    return await access.authenticate(signed_in.secret, bearer=False)
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "ob_lch_" + "a" * 42,  # under 256 bits
+        "ob_svc_" + "a" * 43,
+        "a" * 50,
+        "ob_lch_" + "a" * 42 + "!",
+        "ob_lch_" + "a" * 42 + " ",
+        "ob_lch_" + "a" * 250,
+    ],
+)
+async def test_a_launch_secret_that_is_not_one_is_refused(
+    store: MemoryIdentityStore, clock: ManualClock, secret: str
+) -> None:
+    access = Access(store, Registry([ONEBERTH_ROLES, NEORC]), clock=clock, local=True)
+    with pytest.raises(InvalidValueError, match="launch secret"):
+        await access.start_local(secret)
+
+
+async def test_a_launch_secret_is_for_the_local_mode_alone(access: Access) -> None:
+    with pytest.raises(InvalidValueError, match="local mode alone"):
+        await access.start_local(LAUNCH)
+    with pytest.raises(AuthenticationError):
+        await launcher(access)
+
+
+@pytest.mark.parametrize(
+    "secret", ["ob_lch_" + "b" * 43, "ob_lch_" + "a" * 44, "ob_lch_" + "a" * 42]
+)
+async def test_a_wrong_launch_secret_names_nobody(local: Access, secret: str) -> None:
+    with pytest.raises(AuthenticationError, match="launch secret"):
+        await launcher(local, secret)
+
+
+async def test_the_launch_secret_names_the_launcher(local: Access) -> None:
+    principal = await launcher(local)
+    assert (principal.name, principal.roles, principal.is_service) == (
+        "launcher",
+        frozenset({"oneberth/launcher"}),
+        True,
+    )
+
+
+async def test_the_launcher_swaps_a_ticket_for_a_session_of_the_local_user(
+    local: Access, store: MemoryIdentityStore
+) -> None:
+    principal = await window(local)
+
+    assert principal.user is not None
+    assert (principal.user.provider, principal.user.subject, principal.name) == (
+        LOCAL_PROVIDER,
+        "local",
+        "Ada",
+    )
+    assert principal.is_browser_session
+    assert await store.user_of(LOCAL_PROVIDER, "local") == principal.user
+
+
+async def test_the_local_user_holds_every_role_a_person_can_hold(
+    local: Access,
+) -> None:
+    principal = await window(local)
+    assert principal.roles == {"neorc/user", "oneberth/admin"}
+    assert local.allows(principal, TOKENS_MANAGE)
+    assert not local.allows(principal, "neorc/tasks:claim", "default")
+    assert not local.allows(principal, "oneberth/tickets:create")
+
+
+async def test_a_ticket_works_once(local: Access) -> None:
+    ticket, _ = await local.create_ticket(await launcher(local))
+    await local.take_ticket(ticket)
+    with pytest.raises(AuthenticationError, match="ticket"):
+        await local.take_ticket(ticket)
+
+
+@pytest.mark.parametrize(
+    ("age", "works"),
+    [
+        (timedelta(0), True),
+        (timedelta(seconds=59), True),
+        (MINUTE, False),
+        (timedelta(minutes=5), False),
+    ],
+)
+async def test_a_ticket_works_within_one_minute(
+    local: Access, clock: ManualClock, age: timedelta, works: bool
+) -> None:
+    ticket, expires_at = await local.create_ticket(await launcher(local))
+    assert expires_at == clock() + MINUTE
+    clock.advance(age)
+    if works:
+        await local.take_ticket(ticket)
+    else:
+        with pytest.raises(AuthenticationError, match="ticket"):
+            await local.take_ticket(ticket)
+
+
+@pytest.mark.parametrize("ticket", ["", "nonsense", "x" * 300])
+async def test_an_unknown_ticket_is_refused(local: Access, ticket: str) -> None:
+    with pytest.raises(AuthenticationError, match="ticket"):
+        await local.take_ticket(ticket)
+
+
+async def test_the_launch_secret_alone_asks_for_a_ticket(local: Access) -> None:
+    person = await window(local)
+    worker_secret, _ = await local.create_service_token(
+        "w", "neorc/worker", resource="q", by=await launcher(local)
+    )
+    worker = await local.authenticate(worker_secret, bearer=True)
+    for principal in (person, worker):
+        with pytest.raises(PermissionDeniedError):
+            await local.create_ticket(principal)
+
+
+async def test_tickets_wait_sixteen_at_a_time(
+    local: Access, clock: ManualClock
+) -> None:
+    principal = await launcher(local)
+    for _ in range(16):
+        await local.create_ticket(principal)
+    with pytest.raises(BusyError):
+        await local.create_ticket(principal)
+    clock.advance(MINUTE)
+    await local.create_ticket(principal)
+
+
+async def test_the_local_mode_skips_the_ten_minute_rule(
+    local: Access, clock: ManualClock
+) -> None:
+    principal = await window(local)
+    clock.advance(timedelta(hours=30))
+    secret, _ = await local.mint_personal_token(principal, "script")
+    await local.begin_pairing(principal)
+    script = await local.authenticate(secret, bearer=True)
+    assert script.roles == {"neorc/user", "oneberth/admin"}
+    with pytest.raises(BearerRefusedError):
+        await local.mint_personal_token(script, "another")
+
+
+async def test_a_local_session_lasts_until_the_application_stops(
+    local: Access, store: MemoryIdentityStore, clock: ManualClock
+) -> None:
+    signed_in = await local.take_ticket(
+        (await local.create_ticket(await launcher(local)))[0]
+    )
+    token, _ = await local.mint_personal_token(
+        await local.authenticate(signed_in.secret, bearer=False), "script"
+    )
+    clock.advance(timedelta(days=30))
+    await local.authenticate(signed_in.secret, bearer=False)
+
+    await local.stop_local()
+
+    for secret in (signed_in.secret, LAUNCH):
+        with pytest.raises(AuthenticationError):
+            await local.authenticate(secret, bearer=secret != signed_in.secret)
+    # The next start: the personal token of the page stays.
+    await local.start_local("ob_lch_" + "c" * 43)
+    await local.authenticate(token, bearer=True)
+
+
+async def test_a_start_ends_the_sessions_an_earlier_start_left(
+    local: Access, store: MemoryIdentityStore, clock: ManualClock
+) -> None:
+    left = await local.take_ticket(
+        (await local.create_ticket(await launcher(local)))[0]
+    )
+    # The application died without its stop; it starts again.
+    again = Access(store, Registry([ONEBERTH_ROLES, NEORC]), clock=clock, local=True)
+    await again.start_local("ob_lch_" + "c" * 43)
+    with pytest.raises(AuthenticationError):
+        await again.authenticate(left.secret, bearer=False)
+
+
+async def test_a_token_the_launcher_mints_ends_when_the_application_stops(
+    local: Access, store: MemoryIdentityStore
+) -> None:
+    by = await launcher(local)
+    secret, token = await local.create_service_token(
+        "worker-1", "neorc/worker", resource="default", by=by
+    )
+    worker = await local.authenticate(secret, bearer=True)
+    assert worker.grants == {Grant("neorc/worker", "default")}
+    assert local.allows(worker, "neorc/tasks:claim", "default")
+    assert await store.service_tokens() == []
+    assert [t.name for t in await local.service_tokens(by=by)] == ["worker-1"]
+    with pytest.raises(InvalidValueError, match="exists"):
+        await local.create_service_token(
+            "worker-1", "neorc/worker", resource="q", by=by
+        )
+
+    await local.stop_local()
+
+    with pytest.raises(AuthenticationError):
+        await local.authenticate(secret, bearer=True)
+    assert token.expires_at is None
+
+
+async def test_the_local_user_revokes_a_token_the_launcher_minted(
+    local: Access,
+) -> None:
+    secret, token = await local.create_service_token(
+        "worker-1", "neorc/worker", resource="default", by=await launcher(local)
+    )
+    person = await window(local)
+    await local.revoke_service_token(token.id, by=person)
+    with pytest.raises(AuthenticationError):
+        await local.authenticate(secret, bearer=True)
+
+
+@pytest.mark.parametrize("by_launcher", [True, False])
+async def test_no_token_holds_the_launcher_role(
+    local: Access, by_launcher: bool
+) -> None:
+    by = await launcher(local) if by_launcher else await window(local)
+    with pytest.raises(InvalidValueError, match="launch secret alone"):
+        await local.create_service_token("l", "oneberth/launcher", by=by)
+
+
+async def test_the_local_mode_signs_in_through_no_provider(
+    store: MemoryIdentityStore, clock: ManualClock, local: Access
+) -> None:
+    with pytest.raises(InvalidValueError, match="allow list"):
+        Access(store, Registry([ONEBERTH_ROLES, NEORC]), POLICY, local=True)
+    with pytest.raises(InvalidValueError, match="ticket"):
+        await local.sign_in(ADA)
+
+
+async def test_the_local_user_is_nobody_outside_the_local_mode(
+    local: Access, store: MemoryIdentityStore, clock: ManualClock
+) -> None:
+    signed_in = await local.take_ticket(
+        (await local.create_ticket(await launcher(local)))[0]
+    )
+    providers = new_access(store, clock)
+    with pytest.raises(AuthenticationError, match="local mode"):
+        await providers.authenticate(signed_in.secret, bearer=False)
+    with pytest.raises(PermissionDeniedError):
+        await providers.create_ticket(await launcher(local))

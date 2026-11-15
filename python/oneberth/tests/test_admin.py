@@ -284,10 +284,10 @@ def test_the_oneberth_command_works_on_postgresql(
     assert "version 1" in capsys.readouterr().out
 
     monkeypatch.setenv("ONEBERTH_DATABASE_URL", pg_url)
-    main(["tokens", "create", "launcher", "--role", "oneberth/launcher"])
+    main(["tokens", "create", "ops", "--role", "oneberth/admin"])
     assert capsys.readouterr().out.startswith("ob_svc_")
     main(["tokens", "list"])
-    assert capsys.readouterr().out.startswith("launcher\toneberth/launcher\t")
+    assert capsys.readouterr().out.startswith("ops\toneberth/admin\t")
     main(["sessions", "clear"])
     assert capsys.readouterr().out == "ended 0 sessions\n"
     main(["devices", "list"])

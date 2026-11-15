@@ -87,6 +87,7 @@ def test_a_new_secret_names_its_kind(kind: CredentialKind) -> None:
         ("ob_pat_abc", CredentialKind.PERSONAL_TOKEN),
         ("ob_dev_abc", CredentialKind.DEVICE),
         ("ob_svc_abc", CredentialKind.SERVICE_TOKEN),
+        ("ob_lch_abc", CredentialKind.LAUNCH),
         ("ob_ses_", None),
         ("neorc_abc", None),
         ("rbt_abc", None),
