@@ -15,6 +15,7 @@ are blocked.
     python/oneberth/   the oneberth Python library
     ts/                the node packages, with their own tooling
     docs/specs/        the specs: the desired state, and the authority
+    scripts/           the checks that are more than one command
 
 The Python packages form a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/).
 The root `pyproject.toml` holds the ruff, mypy and pytest configuration and the one `uv.lock`.
@@ -54,6 +55,11 @@ Install the packages and the tools into `.venv`, then run the checks CI runs:
     uv run ruff format --check
     uv run mypy
     uv run pytest
+    scripts/check-dco.sh
+
+`check-dco.sh` takes a commit range and defaults to what this branch adds to `main`. CI
+runs it over the commits of the pull request, since the first commits of this repository
+predate the sign-off rule.
 
 ## Tests that need PostgreSQL
 
@@ -125,3 +131,17 @@ Add `-s` to your commit:
 Git then appends a `Signed-off-by` line. Use your real name and a reachable email
 address. If you contribute on behalf of an employer, make sure you have their
 authorization.
+
+`scripts/check-dco.sh` checks this, and CI runs it on every pull request. The sign-off may
+be the author's or the committer's: the DCO is certified by whoever puts the commit here,
+and that is not always the person who wrote it.
+
+A dependency update opened by Dependabot carries no sign-off, because a bot certifies
+nothing. A maintainer takes such a change over before it is merged, by one of:
+
+    git cherry-pick -s <commit>          keeps Dependabot as the author and
+                                         signs off as the committer
+    git commit --amend -s --reset-author makes it your commit outright
+
+Both pass the check. `git commit -s` on top of an unsigned commit does not: the commit
+without the trailer is still in the range.
