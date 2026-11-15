@@ -25,6 +25,6 @@ The pattern holds in four shapes:
 ## What a spec holds
 
 - A spec describes the desired state: how the three projects work with the pattern in place.
-- A spec says nothing of the code as it is. The review and the plan are in
+- A spec says nothing of the code as it is. The gap and the plan are in
   [working-notes](../working-notes/).
 - The specs of neorc and Robinauts are the authority on each application's own behaviour.

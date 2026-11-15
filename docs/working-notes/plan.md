@@ -1,5 +1,7 @@
 # Plan: the first version
 
+[gap.md](gap.md) maps the code as it is to the specs.
+
 ## Scope
 
 - This version builds the desktop, in both of its shapes
@@ -29,55 +31,146 @@
 - The worker listener as a service of its own, with a network policy.
 - A worker in a VM. The path to the worker listener is open.
 
-## Decisions needed
-
-[review.md](review.md), "Open questions", states each question in full.
-
-| question | needed before step |
-|---|---|
-| Where does the form that starts a run live? | 7 |
-| Whose conversations does a flow handler create? | 7 |
-| Do the modes without credentials go away? | 9 |
-| Does the launcher start in oneberth? | 9 |
-| What does closing the window do? | 9 |
-| How does an untrusted worker reach a model? | 11 |
-
 ## Steps
 
 Each step leaves both applications working, with their tests passing.
 
-1. **The identity core**, in oneberth. Users, credentials, the allow list and roles, in
-   memory, with the contract suite of the store. It starts from neorc's core and adds
-   Robinauts' users, device pairing and the check at every use.
-2. **The PostgreSQL store, the provider adapter and the admin scripts**, in oneberth.
-3. **The contract and `compose_app`**, in oneberth. The contract is written from the routes
-   both applications have today. The step includes the `/auth` routes, the checks on a
-   request, the security headers, the OpenAPI documents and the server.
-4. **neorc on oneberth**, in neorc. `neorc-core` loses the identity core and keeps its role
-   table. The manager becomes a component, served under `/neorc/`. The clients and the
-   commands use the new address.
-5. **`@oneberth/ui`**, in oneberth and neorc. The package holds the session, the sign-in
-   page, the rail and the account pages. neorc's interface uses them and becomes a package
-   with one root component.
-6. **Robinauts on oneberth**, in Robinauts. The backend becomes a component, served under
-   `/robinauts/`. Each route declares a permission. The interface uses `@oneberth/ui`.
-7. **neorc composed into Robinauts**, in Robinauts. The backend composes both components.
-   The interface shows neorc's components in the shell. The frame and the copied navigation
-   go away.
-8. **The SQLite stores**, in all three. Each store passes the contract suite of its port.
-   neorc's manager notifies in memory on SQLite.
-9. **The desktop as processes**, in oneberth and Robinauts. The step builds local sign-in,
-   the launcher and the window. The launcher starts the backend and the workers, and gives
-   each worker a service token.
-10. **The test of SQLite with Docker on macOS**, in Robinauts. The data directory is mounted
-    into a container, and one process opens the files. The result picks the host directory
-    or a Docker volume.
-11. **The desktop with Docker**, in oneberth and Robinauts. The step builds the backend's
-    image, the two networks, the worker listener, the narrower worker routes and untrusted
-    workers in containers.
+### 1. The identity core
+
+- In oneberth. Users, credentials, the allow list and roles, in memory, with the contract
+  suite of the store.
+- The core starts from neorc's and adds Robinauts' users, device pairing and the check at
+  every use ([gap.md](gap.md), "The two copies of sign-in").
+
+### 2. The PostgreSQL store, the provider adapter and the admin scripts
+
+- In oneberth.
+
+### 3. The contract and `compose_app`
+
+- In oneberth. The step includes the `/auth` routes, the checks on a request, the security
+  headers, the OpenAPI documents and the server.
+- The contract is written from the routes both applications have today: 680 lines in neorc
+  and about 1,700 in Robinauts. [composition.md](../specs/composition.md), "What the contract
+  covers", lists the needs found in them.
+- neorc's routes are thin by rule: each parses a request and calls one method.
+- This is the largest part of oneberth. A softer rule is the fallback: oneberth composes,
+  and an application still declares its routes on FastAPI.
+
+### 4. neorc on oneberth
+
+- In neorc. `neorc-core` loses the identity core and keeps its role table.
+- The manager becomes a component, served under `/neorc/`. The clients and the commands use
+  the new address. neorc's clients already take a base address.
+
+### 5. `@oneberth/ui`
+
+- In oneberth and neorc. The package holds the session, the sign-in page, the rail and the
+  account pages.
+- neorc's interface uses them and becomes a package with one root component.
+- neorc's interface package is private today, exports nothing and builds one page. Its
+  stylesheet is global, and its one switch for a host is `?embedded`.
+- neorc pins React 19.0.8 and Robinauts 19.3.1. The three repositories move React together.
+- No registry holds the packages yet. An application pins a commit, and a node package
+  ships its TypeScript source, since install scripts are disabled in both projects.
+
+### 6. Robinauts on oneberth
+
+- In Robinauts. The backend becomes a component, served under `/robinauts/`.
+- Each route declares a permission. Robinauts has no roles today.
+- The interface uses `@oneberth/ui`.
+
+### 7. neorc composed into Robinauts
+
+- In Robinauts. The backend composes both components.
+- The interface shows neorc's components in the shell. The frame and the copied navigation go away.
+- Robinauts' bundle is 101.5 KB against a budget of 400 KB. neorc brings a query library
+  and two graph libraries. The budget is measured again.
+- A browser allows six connections per origin over HTTP/1.1. A Robinauts tab holds two, and
+  neorc's long poll makes three. A hidden application stops its long polls.
+- Needs two decisions: the form that starts a run, and a flow handler's conversations.
+
+### 8. The SQLite stores
+
+- In all three repositories. Each store passes the contract suite of its port.
+- neorc's ports have contract suites today. Robinauts raises `NotImplementedError` for
+  local storage.
+- neorc tells waiting workers about a new task through PostgreSQL's notifications.
+  The manager notifies in memory on SQLite.
+
+### 9. The desktop as processes
+
+- In oneberth and Robinauts. The step builds local sign-in, the launcher and the window.
+- The launcher starts the backend and the workers, and gives each worker a service token.
+- Robinauts' server starts its workers itself today, in `cli/lifecycle.py`. That code is
+  where the launcher starts from.
+- Needs three decisions: the modes without credentials, the launcher's repository, and
+  what closing the window does.
+
+### 10. The test of SQLite with Docker on macOS
+
+- In Robinauts. The data directory is mounted into a container, and one process opens the files.
+- Docker Desktop on macOS passes file operations through a virtual machine. SQLite's locks
+  and shared memory are the risk there.
+- The result picks the host directory or a Docker volume with a copy at the switch.
+
+### 11. The desktop with Docker
+
+- In oneberth and Robinauts. The step builds the backend's image, the two networks, the
+  worker listener, the narrower worker routes and untrusted workers in containers.
+- Robinauts' worker routes take the owner from the path today. A worker learns an owner's
+  id from each turn it runs, and then lists and reads every session of that owner.
+  An untrusted worker gets the tasks it holds, and their sessions.
+- A worker started by the server inherits the server's environment today, the database URL
+  included. An untrusted worker gets none of it.
+- Robinauts' Docker workers use `--network host` today, which works on Linux alone.
+- Needs one decision: how an untrusted worker reaches a model.
 
 Steps 1 to 7 remove the duplication.
 Steps 8 to 11 are the desktop.
+
+## Decisions needed
+
+### Before step 7
+
+**Where does the form that starts a run live?** Robinauts has its own form, with lists of
+values for models, agents and repositories. neorc has forms of its own, with fixed options.
+One way keeps neorc's form and lets the host fill the lists.
+
+**Whose conversations does a flow handler create?** They are the developer's today, without
+sign-in. With sign-in the handler's token decides: the token of the person who started the
+run, or a service of its own.
+
+### Before step 9
+
+**Do the modes without credentials go away?** The specs remove `--no-auth` and
+`--dev-no-sign-in`. A developer then opens the printed URL once, and a script needs a token.
+The alternative keeps them for development and forbids them beside an untrusted worker.
+
+**Does the launcher start in oneberth?** Robinauts is its one user at first.
+The launcher can start in Robinauts and move once neorc needs it.
+
+**What does closing the window do?** A turn runs in the background by design. Stopping the
+application with its window ends running turns. Keeping it alive leaves processes nobody sees.
+
+### Before step 11
+
+**How does an untrusted worker reach a model?** It holds none of the operator's keys.
+There are three ways. The worker uses the person's own credentials, as the Claude Code
+worker does. The network lets it reach the model provider alone. Or the backend passes its
+model calls on.
+
+### After this version
+
+**Which VMs, and by what path?** A local VM reaches the worker listener over a host-only
+network. A VM elsewhere needs a tunnel or a relay, and the desktop accepts no inbound connection.
+
+Smaller points, with no decision needed yet:
+
+- Windows is not a target of Robinauts today. A desktop application makes the question larger.
+- The package names, and the registries, are proposals.
+- Robinauts' docs name `open-shipyard/neorc`. The repositories read here are under `the-guish`.
+- A desktop that signs in through a company's provider is not specified.
 
 ## After this version
 
