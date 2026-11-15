@@ -15,6 +15,19 @@ It ships two packages:
 - The identity core, `oneberth.identity`: users, the four kinds of credential, device
   pairing, the allow list, roles and the decision of a permission. It runs on a store
   port, with a memory store and the store's contract suite.
+- The stores: `oneberth.identity.postgres`, in the PostgreSQL schema `oneberth`, and
+  `oneberth.identity.sqlite`, in the file `oneberth.db`. Both pass the contract suite.
+  `oneberth.stores.opened_store` opens either for a backend.
+- The configuration reader, `oneberth.config`: the TOML file that `ONEBERTH_CONFIG` names.
+- The OpenID Connect client, `oneberth.providers`, for Google and Okta.
+- The admin scripts, `oneberth.admin`. The `oneberth` command runs them on PostgreSQL:
+
+      oneberth store init --database-url postgresql://…
+      oneberth tokens create|list|revoke
+      oneberth sessions clear
+      oneberth devices list|end
+
+  An application shows the same commands under its own name, with its own roles.
 
 ## Documents
 

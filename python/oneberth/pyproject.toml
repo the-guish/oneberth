@@ -39,6 +39,10 @@ postgres = ["asyncpg>=0.32.0"]
 # Starlette and uvicorn through it.
 web = ["fastapi>=0.120", "uvicorn>=0.38"]
 
+[project.scripts]
+# The admin scripts. An application shows the same under its own name.
+oneberth = "oneberth.admin:main"
+
 [project.urls]
 Homepage = "https://github.com/the-guish/oneberth"
 Issues = "https://github.com/the-guish/oneberth/issues"

@@ -23,6 +23,18 @@ A base install of `oneberth` brings no third-party code. Each adapter that needs
 an extra, such as `oneberth[postgres]`. A distribution ships its own copies of `LICENSE`,
 `NOTICE` and `AUTHORS`, and CI checks that they match the root's.
 
+The library's modules:
+
+    oneberth/identity/            the core: rules, the store port, Access
+    oneberth/identity/memory/     the store in memory
+    oneberth/identity/postgres/   the store on PostgreSQL (extra: postgres)
+    oneberth/identity/sqlite/     the store in one SQLite file
+    oneberth/identity/testing/    ManualClock, and the store's contract suite
+    oneberth/config.py            the reader of the TOML configuration
+    oneberth/providers.py         the OpenID Connect client (extra: providers)
+    oneberth/stores.py            how a backend opens its store
+    oneberth/admin.py             the admin scripts, and the `oneberth` command
+
 Test modules have names unique across the repository, such as `test_identity_rules.py`.
 pytest and mypy collect them in one run. Shared fixtures go in the root `conftest.py`.
 
