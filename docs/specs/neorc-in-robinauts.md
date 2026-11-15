@@ -80,7 +80,8 @@ components over that address ([shell.md](shell.md)).
 - A run records the person who started it. The conversations a handler creates for that run
   belong to that person.
 - Such a handler runs on a trusted worker and has a token for the front listener.
-- An untrusted worker has no route to the front listener, and these handlers do not run there.
+- An untrusted worker has no route to the front listener, and these handlers do not run
+  there ([shapes.md](shapes.md), "The desktop, with Docker").
 
 ## Details likely to change
 
