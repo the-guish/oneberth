@@ -31,6 +31,9 @@ The shell is the same program in both. It starts no process.
   mounts it as the process's token file.
 - A proxy or load balancer in front ends TLS and sends every request to the
   shell.
+- Links inside the cluster carry tokens. They should use TLS or a service
+  mesh. Plain HTTP is allowed: an identity token is short-lived and names
+  one app.
 - Oneberth ships no chart. A deployment writes its own.
 
 ## Desktop: the launcher
@@ -40,25 +43,45 @@ window on one person's machine, and stops them together.
 
 ### Starting
 
-1. The launcher locks the data folder. A second launcher on the same folder
-   refuses to start.
-2. It removes what a previous launch left: the processes in the last
+1. The launcher checks the data folder. The folder and its files are
+   readable by the person's account alone. A folder open to others refuses
+   the start.
+2. It locks the data folder. A second launcher on the same folder refuses to
+   start.
+3. It removes what a previous launch left: the processes in the last
    launch's record, and the containers labelled with this data folder.
-3. It reads the port from the data folder. The first start picks a free
-   loopback port and records it. A taken port refuses the start.
-4. It writes to the shell's database: one service token per background
-   process, and the window's ticket. It deletes the tokens of earlier
-   launches.
-5. It starts the shell and waits for its health path, for up to 60 s.
-6. It opens the window. The rail shows each app as "starting".
-7. It starts each app's web process on a free loopback port and waits for
-   the app's health path, for up to 60 s.
-8. It starts the background processes.
+4. It picks the ports. The shell's port is fixed: the first start picks a
+   free loopback port and records it, and a taken port refuses the start.
+   Each app's web process gets a free loopback port for this launch.
+5. It makes the shell's tables, with the same idempotent step the shell
+   runs.
+6. It writes to the shell's database: one service token per background
+   process, and one per declared call ([apps.md](apps.md), "Calls to other
+   apps"). It deletes the tokens and the local session of earlier launches.
+7. It writes the state file: each app's address and state.
+8. It starts the shell and waits for its health path, for up to 60 s.
+9. It writes the window's ticket and opens the window. The rail shows each
+   app as "starting".
+10. It starts each app's web process and waits for the app's health path,
+    for up to 60 s.
+11. It starts the background processes.
 
 - An app that fails to start is shown in the rail as failed, with its last
   log lines. The other apps run.
-- The launcher writes each token before the shell starts. The two programs
-  need no channel between them.
+
+### The state file
+
+- The state file is `state.json` in the data folder. The launcher writes
+  it. The shell reads it.
+- It holds, for each app, the address of its web process, its state
+  (`starting`, `running`, `failed`, `stopped`) and, for a failed app, its
+  last log lines.
+- The launcher replaces the file whole at each change. The shell reads it
+  again when it changes.
+- The shell forwards to the address in the file. It probes each app's
+  health path itself.
+- The database and the state file are the only things the two programs
+  share.
 
 ### Stopping
 
@@ -88,7 +111,8 @@ window on one person's machine, and stops them together.
 
 - A process with a `command` runs as a child of the launcher, in a process
   group of its own.
-- A web process listens on `127.0.0.1` alone, on the port in `PORT`.
+- A web process listens on the address in `HOST` and the port in `PORT`.
+  `HOST` is `127.0.0.1`.
 - A background process reaches its app at `http://127.0.0.1:<app port>` and
   the shell at `http://127.0.0.1:<shell port>`.
 - The token file is readable by the person's account alone.
@@ -104,15 +128,15 @@ window on one person's machine, and stops them together.
 - Every container carries a label with the data folder, for the next
   launch's cleanup.
 - The token file is mounted read only. A declared mount is mounted at the
-  host's own path, so a stored path means the same file to every process.
+  host's own path. A stored path names the same file in every process.
 - On Linux the container runs as the person who started the launcher.
 
 ### How a container and the host reach each other
 
-| host | the container reaches the host at | the host reaches a web container at |
-|---|---|---|
-| Linux, Docker Engine | `127.0.0.1`, with `--network host` | `127.0.0.1:<port>`, with `--network host` |
-| Docker Desktop, macOS and Windows | `host.docker.internal` | a port published on `127.0.0.1` |
+| host | the container reaches the host at | the host reaches a web container at | a web container's `HOST` |
+|---|---|---|---|
+| Linux, Docker Engine | `127.0.0.1`, with `--network host` | `127.0.0.1:<port>`, with `--network host` | `127.0.0.1` |
+| Docker Desktop, macOS and Windows | `host.docker.internal` | a port published on `127.0.0.1` | `0.0.0.0` |
 
 - The launcher picks the row and sets the process's addresses to match.
 - A container shares the host's network on Linux. Docker packages a process
@@ -126,14 +150,22 @@ window on one person's machine, and stops them together.
   has no navigation bar.
 - The launcher finds the browser on the usual paths of each operating
   system. With none found, it opens the default browser in a tab.
-- **The ticket.** The URL is `http://127.0.0.1:<port>/auth/launch?ticket=…`.
-  The ticket is random, works once and expires after 60 s. The shell
-  exchanges it for the local user's session cookie and redirects to `/`.
-- **The origin stays the same.** The port is fixed at the first start, so
-  the theme and each app's web storage survive a restart.
-- **Closing.** The shell's page sends a heartbeat every 5 s. The shell's
-  health path reports the age of the last one. The launcher stops everything
-  when the browser process exits, or when the heartbeat is 15 s old.
+- **The ticket.** The ticket is random, works once and expires 60 s after it
+  is written. The launcher writes it once the shell is up.
+- **The ticket stays out of the command line.** The launcher writes a small
+  page in the data folder that holds the ticket and sends the browser to
+  `/auth/launch`. The browser opens that file. The launcher deletes the file
+  once the ticket is used.
+- The shell exchanges the ticket for the local user's session cookie and
+  redirects to `/`.
+- **The origin stays the same.** The shell's port is fixed at the first
+  start. The theme and each app's web storage survive a restart.
+- **Closing.** The launcher stops everything when the browser process
+  exits.
+- The shell's page also holds one connection open to the shell. The shell's
+  health path reports when the last such connection closed. The launcher
+  stops everything 30 s after that time. A minimised or sleeping window
+  keeps its connection.
 
 ## Not offered
 
@@ -148,3 +180,4 @@ window on one person's machine, and stops them together.
 - Limits per process (memory, CPU), and whether the launcher sets them.
 - How the launcher reports a failed app when the window is the default
   browser.
+- Mounts at the host's own path on a Windows host.

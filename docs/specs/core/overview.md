@@ -65,8 +65,8 @@ A signed-in person completes a task in neorc.
 
 1. The browser sends `POST /apps/neorc/tasks/42/complete` to the shell, with
    the session cookie.
-2. The shell checks `Host`, `Origin` and `Sec-Fetch-Site`.
-3. The shell reads the session and the person from its database.
+2. The shell reads the session and the person from its database.
+3. The shell checks `Host`, `Origin` and `Sec-Fetch-Site`.
 4. The shell reads the person's grants in `neorc`. A person with no role
    there gets 403.
 5. The shell signs an identity token for 60 seconds: the person, the app,
@@ -77,7 +77,7 @@ A signed-in person completes a task in neorc.
    reads the roles and decides.
 8. neorc does the work in its own database and answers.
 
-The shell keeps the answers of steps 3 and 4 for up to 60 seconds.
+The shell keeps the answers of steps 2 and 4 for up to 60 seconds.
 
 ## The two setups
 

@@ -14,7 +14,7 @@ in any other language.
 
 ## What an app must do
 
-- **Listen on HTTP/1.1** on the port it is handed in `PORT`.
+- **Listen on HTTP/1.1** on the address in `HOST` and the port in `PORT`.
 - **Check the identity token on every request**, except its health path and
   its public paths ([identity.md](identity.md), "The identity token"). A
   request without a valid token gets 401.
@@ -42,7 +42,7 @@ icon = "flow"                     # a name from the shell's icon set
 protocol = 1                      # the shell protocol version the UI speaks
 entry = "ui/"                     # the page the shell frames, under /apps/<id>/
 health = "healthz"                # answers 200 when the app is ready
-public = ["hooks/"]               # paths forwarded without a credential
+public = ["hooks/"]               # path prefixes forwarded without a credential
 
 [roles]                           # the app's roles
 default = "user"                  # the role of every signed-in person, or absent
@@ -53,8 +53,16 @@ responder = ["queue:pending", "tasks:complete"]   # granted on a resource
 worker = ["tasks:claim", "tasks:finish"]
 admin = ["*"]
 
+[roles.resources]                 # the kind of resource a role is granted on
+responder = "queue"
+worker = "queue"
+
+[[calls]]                         # a call this app makes to another app
+app = "chat"
+role = "user"
+
 [web]                             # the web process, for the desktop
-command = ["neorc", "manager", "start", "--port", "{port}"]
+command = ["neorc", "manager", "start"]
 # image = "ghcr.io/example/neorc@sha256:..."
 
 [[process]]                       # a background process, for the desktop
@@ -77,8 +85,12 @@ writable = true
   app's own strings. The shell reads the role names only. `*` means every
   permission the app knows.
 - `default` opens the app to everyone who may sign in.
-- `public` lists paths that outside systems call, such as webhooks. The app
-  checks the caller itself there.
+- `[roles.resources]` names the kind of resource a role takes, such as
+  `queue`. A grant of that role names one: `queue:approvals`. A role absent
+  from the table takes no resource.
+- `public` lists path prefixes that outside systems call, such as webhooks.
+  The app checks the caller itself there.
+- A command gets its address and port from `HOST` and `PORT`.
 - `[web]`, `[[process]]` and `[[mount]]` are read by the launcher, on a
   desktop. A server ignores them ([runtimes.md](runtimes.md)).
 - A process declares a `command`, an `image` or both. The configuration
@@ -109,8 +121,8 @@ writable = true
 | `/apps/<id>/` | everything of that app: its API and its pages |
 
 - The shell's address bar is `#/<id>/<app route>`. The shell loads the app's
-  frame at `/apps/<id>/<entry>` with the app route in its hash. The two stay
-  in step over the protocol ([protocol.md](protocol.md)).
+  frame at `/apps/<id>/<entry>` and hands it the route in the handshake. The
+  two stay in step over the protocol ([protocol.md](protocol.md)).
 - The app receives each request without the `/apps/<id>` prefix
   ([gateway.md](gateway.md)).
 
@@ -126,11 +138,11 @@ them on a desktop. The operator sets them on a server.
 | `ONEBERTH_KEYS_URL` | where the process fetches the shell's public keys |
 | `ONEBERTH_SHELL_URL` | where the process reaches the shell |
 | `ONEBERTH_APP_URL` | where a background process reaches its own app directly |
-| `ONEBERTH_TOKEN_FILE` | a background process: a file holding its service token |
+| `ONEBERTH_TOKEN_FILE` | a file holding the process's service token: every background process, and a web process whose app declares calls |
 | `ONEBERTH_DATABASE_FILE` | desktop: the path of the app's own SQLite file |
 | `ONEBERTH_APP_CONFIG` | desktop: the path of the app's own configuration file, when the configuration names one |
 | `ONEBERTH_MOUNT_<NAME>` | the path of a declared mount |
-| `PORT` | the web process: the port to listen on |
+| `HOST`, `PORT` | the web process: the address and the port to listen on |
 
 - A secret is handed as a file the process may read.
 - `ONEBERTH_ISSUER` is a string to compare. A process inside a cluster may
@@ -148,7 +160,28 @@ them on a desktop. The operator sets them on a server.
 - The app sees a principal of kind `service` with the token's role. What
   crosses is the app's own API.
 
+## Calls to other apps
+
+- An app declares each app it calls, and the role it needs there:
+  `[[calls]] app = "chat" role = "user"`, with an optional `resource`.
+- On a desktop the launcher mints a service token with those grants and
+  hands it to the app's processes.
+- On a server an admin approves each declared call on the admin screen and
+  mints the token.
+- The app exchanges that token for an identity token naming the other app
+  ([identity.md](identity.md), "Exchange"), then calls it directly.
+
+## Conformance
+
+- Oneberth ships test vectors for the app's check: valid tokens, and tokens
+  with a wrong audience, a wrong issuer, a past expiry, another algorithm
+  and a bad signature.
+- An app's check passes every vector before the app is listed as supported.
+
 ## Open
+
+- The development loop: running one app from a dev server with hot reload,
+  and running one app without the shell.
 
 - Whether an app may serve its manifest itself, so that a cluster needs no
   copy of the file beside the shell.

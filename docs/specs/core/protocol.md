@@ -5,9 +5,12 @@ How the shell's page and an app's frame talk. JSON-RPC 2.0 over
 
 ## Rules
 
-- The app loads the client from the shell: `<script src="/shell/client.js">`.
-  It is the client of the shell that is running, so the two always match.
-  The app may also speak the protocol itself; this document is the contract.
+- The app loads the client from the running shell, at run time:
+  `const shell = await import("/shell/client.js")`. The running shell serves
+  the client. The two always match.
+- A bundler leaves that import alone: its address is absolute and outside
+  the app. A failed import means there is no shell.
+- The app may also speak the protocol itself. This document is the contract.
 - Each side reads a message only when `event.origin` is its own origin and
   `event.source` is the window it expects: the shell, its app's frame; the
   frame, `window.parent`. Each posts to its own origin, never to `"*"`.
@@ -16,11 +19,11 @@ How the shell's page and an app's frame talk. JSON-RPC 2.0 over
 - Methods are named `shell/...`. The envelope and the handshake follow MCP
   Apps (SEP-1865), so the two can share one implementation; the names never
   collide.
-- The shell sends nothing to a frame before it has sent `shell/initialized`.
+- The shell answers `shell/initialize`. It sends nothing else to a frame
+  before the frame has sent `shell/initialized`.
 - An unknown method is answered `-32601`. An unknown field is ignored.
-- An app run without the shell (opened at `/apps/<id>/<entry>` on its own)
-  finds no parent that answers. The client then reports "no shell" and the app
-  works without the rail.
+- An app run without the shell finds no client to import, or no parent that
+  answers. The app then works without the rail.
 
 ## The handshake
 
@@ -64,6 +67,21 @@ Answered with:
 
 - A route is a string that starts with `/`, at most 2,048 characters. The
   shell does not interpret it.
+
+## History
+
+- The shell owns the browser's history. The shell alone adds an entry.
+- A framed app changes its own address by replacing it
+  (`location.replace`, `history.replaceState`). It then sends
+  `shell/navigate`, and the shell pushes or replaces `#/<id><route>`.
+- Back and Forward reach the shell, which sends `shell/navigate` to the
+  app.
+- The route in the answer to `shell/initialize` is the app's first route.
+  The frame's own hash is empty at load.
+- The shell reads `shell/navigate` and `shell/title` from the frame of the
+  current app alone.
+- The client does this for an app: `navigate` replaces and reports in one
+  call. Without a shell it pushes, as an app on its own does.
 - Badges are shown capped at "99+".
 
 ## Theme tokens
@@ -85,9 +103,9 @@ Answered with:
 ## The client
 
 - `/shell/client.js` is an ES module with no dependencies. It exposes
-  `connect({app})`, which runs the handshake and resolves with its result,
-  or with `null` when there is no shell; `navigate`, `title`, `badge`,
-  `open`, `drawer`; and `on(method, handler)`.
+  `connect({app, protocol})`, which runs the handshake and resolves with its
+  result, or with `null` when no parent answers; `navigate`, `title`,
+  `badge`, `open`, `drawer`, `sessionEnded`; and `on(method, handler)`.
 - Its source and its TypeScript types are in `ts/oneberth-protocol`. The
   types are published with the npm package for apps that want them.
 

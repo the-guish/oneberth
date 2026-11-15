@@ -24,7 +24,8 @@ app and issues tokens. An app trusts the identity token alone.
 - The allow list is checked at sign-in. It is checked again on every use of
   a credential, at most once a minute.
 - A person's groups are read at sign-in. A person removed from a group at
-  the provider keeps their access until their session ends.
+  the provider keeps their access until their session ends
+  ("Leavers" below).
 
 ## Users
 
@@ -41,7 +42,8 @@ app and issues tokens. An app trusts the identity token alone.
 - Cookie: `__Host-oneberth_session`, `HttpOnly`, `SameSite=Lax`, `Secure`,
   `Path=/`. On a loopback `http` origin the prefix and `Secure` are left
   out.
-- A session lasts `session_hours`, 12 by default, and is not renewed.
+- A session lasts `session_hours`, 12 by default, and is not renewed. The
+  desktop's session lasts the launch.
 - Sign-out deletes the row and clears the cookie.
 
 ## Roles and grants
@@ -92,13 +94,15 @@ is asking and which roles they hold in that app.
   signature, `iss`, `aud` and `exp`. It reads who is asking from the token
   alone.
 - **Keys.** The shell makes a P-256 key pair at its first start and keeps it
-  in its database. The public keys are served at `GET /auth/keys`, as a JWK
-  set, without a credential.
+  in its database. One replica makes it, under a database lock. The public
+  keys are served at `GET /auth/keys`, as a JWK set, without a credential.
 - **Fetching keys.** An app fetches the set at `ONEBERTH_KEYS_URL` and keeps
-  it in memory. It fetches again when a token names a `kid` it does not
-  hold, at most once a minute.
-- **Rotation.** `oneberth keys rotate` adds a new key and signs with it. The
-  old key stays in the set for 24 hours.
+  it in memory. It replaces the set once an hour. It also fetches when a
+  token names a `kid` it does not hold, at most once a minute.
+- **Rotation.** `oneberth keys rotate` adds a new key to the set. Every
+  replica reads the keys again once a minute. A replica signs with the new
+  key 10 minutes after it was added. The old key stays in the set for 24
+  hours.
 - **Dependency.** Signing and checking ES256 needs a cryptography library.
   The shell uses `cryptography`. A Python app uses it too, through
   `oneberth-core`.
@@ -112,8 +116,8 @@ secret scanner recognise it.
 |---|---|---|---|
 | prefix | `obp_` | `obs_` | `obd_` |
 | acts as | the person who minted it, with their grants | itself, with its one grant | the person who linked the phone |
-| minted by | the person, in the browser, with a sign-in younger than ten minutes | an admin, on the admin screen or with `oneberth tokens create`; the launcher, for a process it starts | linking a phone |
-| lifetime | 90 days | chosen, at most a year; a launcher's token lasts one launch | until removed |
+| minted by | the person, in the browser, after a fresh sign-in | an admin, on the admin screen or with `oneberth tokens create`; the launcher, for a process it starts | linking a phone |
+| lifetime | 90 days | chosen, at most a year; a launcher's token lasts one launch | 30 days |
 | shown | once | once; a process gets it as a file | once, to the phone |
 | stored | SHA-256 | SHA-256 | SHA-256 |
 | revoked by | its owner; an admin | an admin; the launcher, at the next start | its owner; an admin |
@@ -130,26 +134,56 @@ A process inside the deployment calls an app directly. It first exchanges
 its token for an identity token.
 
 - `POST /auth/exchange`, with the token as bearer and `{"app": "<id>"}` as
-  body. The answer holds an identity token for that app and its expiry.
-- The shell answers 403 when the token holds no role of that app.
+  body.
+- The answer is `{"token": "<identity token>", "expires_at": "<RFC 3339
+  time>"}`.
+- An error is `{"error": "<code>", "message": "<text>"}`. The codes are
+  `invalid_token` (401), `no_role` (403) and `unknown_app` (404).
+- The token file holds the secret alone, on one line. The process reads the
+  file at each exchange. A rotated secret then needs no restart.
 - The process keeps the identity token until shortly before its expiry, then
   exchanges again.
 - A background process exchanges for its own app. An app that calls another
-  app holds a service token with a role there, granted by an admin.
+  app holds a service token with a role there ([apps.md](apps.md), "Calls to
+  other apps").
 
 ## Revocation
 
 - An ended session, a revoked token or a withdrawn grant stops working
-  within 60 seconds through the shell.
+  within two minutes through the shell: up to 60 seconds in the shell's
+  memory, then up to 60 seconds of the last identity token.
 - An identity token from an exchange works until it expires, at most 5
   minutes later.
 - The shell closes a forwarded stream or WebSocket when its credential ends.
   It checks each open one once a minute.
+- An app ends a stream of a direct call when the call's identity token
+  expires. The caller connects again with a new token.
+
+## Leavers
+
+- **Disable a person.** An admin disables a person on the admin screen. The
+  shell deletes every session and token of theirs and refuses their sign-in.
+- **Tokens need a recent sign-in.** A personal token or a device token works
+  while its owner signed in within `reauth_days`, 30 by default. A person
+  removed at the provider cannot sign in, and their tokens stop.
+- **Device tokens expire.** A device token lasts 30 days. The phone links
+  again after that.
+
+## Fresh sign-in
+
+- The admin routes and minting a personal token need a fresh sign-in at the
+  provider.
+- The shell sends the person to the provider with `prompt=login` and
+  `max_age=0`. It checks that the ID token's `auth_time` is under ten
+  minutes old.
+- A session's age alone does not count. A script on the page cannot make a
+  fresh sign-in without the person typing their credentials.
+- On a desktop the local session counts as fresh.
 
 ## Request protection
 
-- The shell checks every request that carries a cookie
-  ([gateway.md](gateway.md), "Checks").
+- The shell checks `Host` and `Origin` on every request that carries a
+  cookie ([gateway.md](gateway.md), "Checks").
 - A bearer is exempt from the `Origin` check.
 
 ## Desktop
@@ -160,10 +194,12 @@ its token for an identity token.
 - **The window signs in with a ticket.** The launcher writes a single-use
   ticket before it opens the window. The shell exchanges the ticket for a
   session cookie ([runtimes.md](runtimes.md), "The window").
+- The local session has no expiry. The launcher deletes it at the next
+  start.
 - Every request needs that session or a token, as on a server. A process on
   the same machine holds neither by default.
-- The shell listens on loopback. It accepts a request whose `Host` is
-  exactly `127.0.0.1:<port>` or `localhost:<port>`.
+- The shell listens on loopback. A request with the cookie must carry the
+  `Host` `127.0.0.1:<port>` exactly.
 - Personal tokens can be minted for the local user, for scripts on the same
   machine.
 - A server refuses a session or a token that names the local user.
@@ -175,7 +211,8 @@ its token for an identity token.
 - A linked phone holds a device token, sent as a bearer. It acts as its
   person, with their grants, in every app.
 - "Linked devices" in the profile menu lists and removes them.
-- Linking is part of the first milestone.
+- Linking is part of the first milestone. Its routes and rules get a
+  document of their own, in a later pull request.
 
 ## Routes
 
@@ -187,13 +224,14 @@ its token for an identity token.
 | `POST /auth/logout` | sign out |
 | `GET /auth/keys` | the public keys, as a JWK set |
 | `POST /auth/exchange` | exchange a token for an identity token |
+| `GET /auth/launch` | desktop: exchange the window's ticket for the local session |
 | `POST /auth/tokens` | mint a personal token |
 | `GET /auth/tokens` | the person's personal tokens, without secrets |
 | `DELETE /auth/tokens/{id}` | revoke one |
-| `/admin/grants`, `/admin/service-tokens` | the admin screen's API, for `oneberth:admin` |
+| `/admin/grants`, `/admin/service-tokens`, `/admin/people` | the admin screen's API, for `oneberth:admin` |
 
-- `/admin/` and minting a personal token accept a session younger than ten
-  minutes. A bearer is refused there.
+- `/admin/` and minting a personal token accept a session with a fresh
+  sign-in. A bearer is refused there.
 
 ## Audit
 
@@ -212,4 +250,3 @@ its token for an identity token.
 - Whether an admin may grant on a resource the app has not listed, or the
   app offers its resources to the admin screen.
 - Sign-out at the identity provider.
-- A separate document for linking phones.

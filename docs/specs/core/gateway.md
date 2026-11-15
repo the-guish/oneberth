@@ -15,10 +15,11 @@ request.
 
 The gateway runs these checks on every request, in this order.
 
-1. **Host.** `Host` must match `public_url`. On a desktop it must be exactly
-   `127.0.0.1:<port>` or `localhost:<port>`.
-2. **Credential.** The request carries a session cookie or a bearer token. A
+1. **Credential.** The request carries a session cookie or a bearer token. A
    request with both is refused.
+2. **Host.** A request with a cookie must carry the `Host` of `public_url`.
+   On a desktop that is exactly `127.0.0.1:<port>`. A request with a bearer
+   is accepted under any host name.
 3. **Origin.** A write with a cookie must carry `Origin` equal to
    `public_url`, and a `Sec-Fetch-Site` of `same-origin` when the browser
    sends one. A WebSocket upgrade with a cookie must carry the same
@@ -30,7 +31,11 @@ The gateway runs these checks on every request, in this order.
 
 - The gateway keeps the answer of steps 4 and 5 in memory for up to 60
   seconds, per credential and app.
-- A request to a path under the app's `public` list skips steps 2 to 5.
+- A request to a path under the app's `public` list skips all five checks.
+- A `public` entry is a path prefix. The gateway normalises the path first:
+  it decodes percent-encoding once and resolves `.` and `..` segments.
+- `/auth/keys` and `/auth/exchange` are reached without a cookie. A process
+  inside a cluster or a container calls them under an internal host name.
 
 ## Forwarding
 

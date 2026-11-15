@@ -44,8 +44,8 @@ Everything else on screen is an app's.
 - The address bar is `#/<app id>/<app route>`. Hash routing: the static
   files need no fallback route.
 - `#/` opens the first app of the rail.
-- Back and Forward move between apps and within them. The shell writes the
-  hash; the app moves by `shell/navigate`.
+- Back and Forward move between apps and within them. The shell alone adds
+  history entries ([protocol.md](protocol.md), "History").
 - The app refuses a route the person may not reach. The shell shows "No
   access" for an app the person may not use.
 
@@ -64,7 +64,8 @@ Everything else on screen is an app's.
   foot. It is a page of the shell, not an app.
 - **People**: everyone who has signed in, their grants, and when they last
   signed in. Grant or take back a role of an app, with a resource where the
-  role takes one.
+  role takes one. Disable a person, which ends every session and token of
+  theirs and refuses their sign-in.
 - **Service tokens**: mint one for an app's role and resource, with a name
   and a lifetime. The secret is shown once. Revoke one.
 - **Apps**: the enabled apps, each one's address and whether its health
@@ -75,8 +76,8 @@ Everything else on screen is an app's.
 ## "API tokens"
 
 - The page lists the person's personal tokens, oldest first. Minting one
-  needs a name and a sign-in younger than ten minutes. An older sign-in asks
-  the person to sign in again. The secret is shown once.
+  needs a name and a fresh sign-in at the provider
+  ([identity.md](identity.md), "Fresh sign-in"). The secret is shown once.
 
 ## Phones and narrow screens
 
@@ -105,8 +106,10 @@ Everything else on screen is an app's.
   screen.
 - The rail marks an app that is starting or that failed to start
   ([runtimes.md](runtimes.md)).
-- The page sends a heartbeat to the shell every 5 s. The launcher reads the
-  heartbeat to learn that the window closed.
+- The rail reads each app's state from the shell, which reads the
+  launcher's state file.
+- The page holds one connection open to the shell. Its close tells the
+  launcher that the window closed.
 
 ## Open
 

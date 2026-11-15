@@ -17,8 +17,11 @@
   standard library's `sqlite3`, in WAL mode.
 - The storage has one port and two adapters. One contract test suite runs
   against both.
-- On a desktop the launcher writes tokens and the ticket to the SQLite file
-  before it starts the shell ([runtimes.md](runtimes.md), "Starting").
+- On a desktop the launcher makes the tables with the same step, then
+  writes tokens and the ticket to the SQLite file
+  ([runtimes.md](runtimes.md), "Starting").
+- The first key pair and the first tables are made under a database lock.
+  Several replicas that start together make them once.
 
 ## An app's database
 
@@ -41,8 +44,10 @@
   `~/.local/share/oneberth` on Linux,
   `~/Library/Application Support/Oneberth` on macOS,
   `%LOCALAPPDATA%\Oneberth` on Windows.
-- It holds the SQLite files, the browser profile, the port, the logs, the
-  lock and the launcher's record of its processes.
+- It holds the SQLite files, the browser profile, the port, the state
+  file, the logs, the lock and the launcher's record of its processes.
+- The folder and its files are readable by the person's account alone. The
+  launcher checks this at every start.
 
 ## The configuration
 
@@ -54,6 +59,7 @@
 ```toml
 public_url = "https://work.example.com"
 session_hours = 12
+reauth_days = 30
 
 [database]
 url_env = "ONEBERTH_DATABASE_URL"
@@ -85,8 +91,10 @@ url = "http://neorc.internal:8420"
 
 - `public_url` is required on a server. It is the origin root: the shell is
   served at `/`.
-- `[apps.<id>] url` is where the app listens, on a server. The launcher sets
-  it on a desktop.
+- `[apps.<id>] url` is where the app listens, on a server. On a desktop the
+  launcher writes each app's address to the state file.
+- `reauth_days`, 30 by default, is how recent a person's sign-in must be for
+  their tokens to work ([identity.md](identity.md), "Leavers").
 - `[[admin]]` takes the allow list's matchers, except `everyone`.
 
 ### On a desktop
