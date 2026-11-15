@@ -37,6 +37,7 @@ from oneberth.launcher._describe import (
     WINDOW_STOP_SECONDS,
     WORKER_START_SECONDS,
     WORKER_STOP_SECONDS,
+    WORKERS_DIRECTORY,
     Application,
     Backend,
     Container,
@@ -47,6 +48,7 @@ from oneberth.launcher._describe import (
     Trust,
     Window,
     Worker,
+    worker_directory,
 )
 from oneberth.launcher._docker import DockerCli
 from oneberth.launcher._entry import AsyncioTimer, desktop_launcher, launch
@@ -125,6 +127,7 @@ __all__ = [
     "TOKEN_FILE",
     "WINDOW",
     "WINDOW_STOP_SECONDS",
+    "WORKERS_DIRECTORY",
     "WORKER_BIND",
     "WORKER_NAME",
     "WORKER_PORT",
@@ -178,4 +181,5 @@ __all__ = [
     "say_ready",
     "shape_of",
     "window_command",
+    "worker_directory",
 ]

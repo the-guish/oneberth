@@ -30,6 +30,9 @@ WINDOW = "window"
 RESERVED = frozenset({BACKEND, WINDOW})
 """Names a worker may not take."""
 
+WORKERS_DIRECTORY = "workers"
+"""The directory of the data directory that holds each worker's own directory."""
+
 BACKEND_START_SECONDS = 60.0
 """How long the launcher waits for the backend's ``ready`` by default."""
 
@@ -58,7 +61,8 @@ class Trust(StrEnum):
     TRUSTED = "trusted"
     """It runs the project's own code."""
     UNTRUSTED = "untrusted"
-    """It runs code nobody reviewed. It runs in a container or in a VM."""
+    """It runs code nobody reviewed. It runs in a container or in a VM, and
+    sees one directory of the host: its own (``worker_directory``)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +92,9 @@ class Mount:
     """A directory of the host that a container sees at ``target``.
 
     A relative ``source`` is inside the data directory, such as
-    ``workers/w1`` for a worker's own storage.
+    ``workers/w1`` for the own directory of the worker ``w1``. An untrusted
+    worker mounts its own directory, or a directory inside it, and nothing
+    else.
     """
 
     source: str | os.PathLike[str]
@@ -255,15 +261,20 @@ def problems_of(application: Application) -> list[str]:
 
 
 def _untrusted_problems(data: Path, worker: Worker) -> list[str]:
+    """An untrusted worker runs in a container, and mounts its own directory
+    or a directory inside it. Everything else of the host is refused: the data
+    directory with its databases and the window's profile, another worker's
+    directory, a path outside the data directory, the Docker socket."""
     if not isinstance(worker.run, Container):
         return [f"the worker {worker.name!r} is untrusted: it runs in a container"]
+    own = worker_directory(data, worker.name)
     problems = []
     for mount in worker.run.mounts:
         source = mount_source(data, mount)
-        if source == data or data.is_relative_to(source):
+        if not source.is_relative_to(own):
             problems.append(
-                f"the worker {worker.name!r} is untrusted: it may not mount"
-                f" the data directory, {source}"
+                f"the worker {worker.name!r} is untrusted: it mounts its own"
+                f" directory, {own}, or a directory inside it, not {source}"
             )
     return problems
 
@@ -271,3 +282,10 @@ def _untrusted_problems(data: Path, worker: Worker) -> list[str]:
 def mount_source(data: Path, mount: Mount) -> Path:
     """The host directory of ``mount``, as an absolute path without ``..``."""
     return Path(os.path.normpath(data / mount.source))
+
+
+def worker_directory(data: Path, name: str) -> Path:
+    """The own directory of the worker ``name``: ``workers/<name>`` in the
+    data directory, as an absolute path without ``..``. It is the one
+    directory of the host an untrusted worker sees."""
+    return Path(os.path.normpath(data / WORKERS_DIRECTORY / name))

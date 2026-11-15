@@ -130,27 +130,9 @@ def described(*workers: Worker, backend: Backend | None = None) -> str:
         ),
         (
             lambda: described(
-                worker("u", Container(IMAGE, mounts=[Mount(".", "/d")]), UNTRUSTED)
-            ),
-            "the worker 'u' is untrusted: it may not mount the data directory, /data",
-        ),
-        (
-            lambda: described(
-                worker("u", Container(IMAGE, mounts=[Mount("/", "/d")]), UNTRUSTED)
-            ),
-            "it may not mount the data directory, /",
-        ),
-        (
-            lambda: described(
                 worker(
-                    "u", Container(IMAGE, mounts=[Mount("a/../..", "/d")]), UNTRUSTED
-                )
-            ),
-            "it may not mount the data directory, /",
-        ),
-        (
-            lambda: described(
-                worker("u", Container(IMAGE, mounts=[Mount("u", "/s")]), UNTRUSTED),
+                    "u", Container(IMAGE, mounts=[Mount("workers/u", "/s")]), UNTRUSTED
+                ),
                 worker("t", Container(IMAGE, mounts=[Mount(".", "/data")])),
             ),
             "accepted",
@@ -186,6 +168,75 @@ def test_a_description_of_containers_is_checked(
     except LauncherError as error:
         found = str(error)
     assert problem in found
+
+
+OWN = "/data/workers/u"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "workers/u",
+        "workers/u/state",
+        "workers/u/a/../b",
+        "/data/workers/u/cache",
+        "./workers/u/",
+    ],
+)
+def test_an_untrusted_worker_mounts_its_own_directory_and_what_is_inside(
+    source: str,
+) -> None:
+    run = Container(IMAGE, mounts=[Mount(source, "/state")])
+    assert described(worker("u", run, UNTRUSTED)) == "accepted"
+
+
+@pytest.mark.parametrize(
+    ("source", "found"),
+    [
+        # The data directory, and what it holds beside the worker's own.
+        (".", "/data"),
+        ("window", "/data/window"),
+        ("oneberth.db", "/data/oneberth.db"),
+        ("workers", "/data/workers"),
+        ("workers/other", "/data/workers/other"),
+        ("workers/u2", "/data/workers/u2"),
+        ("u", "/data/u"),
+        # A way out of the worker's directory, and out of the data directory.
+        ("workers/u/..", "/data/workers"),
+        ("workers/u/../../window", "/data/window"),
+        ("../.ssh", "/.ssh"),
+        ("a/../..", "/"),
+        # A path of the host.
+        ("/", "/"),
+        ("/home/ada/.ssh", "/home/ada/.ssh"),
+        ("/var/run/docker.sock", "/var/run/docker.sock"),
+    ],
+)
+def test_an_untrusted_worker_mounts_nothing_else_of_the_host(
+    source: str, found: str
+) -> None:
+    run = Container(IMAGE, mounts=[Mount(source, "/d")])
+    problem = (
+        f"the worker 'u' is untrusted: it mounts its own directory, {OWN}, or a "
+        f"directory inside it, not {found}"
+    )
+    assert described(worker("u", run, UNTRUSTED)) == problem
+    # A trusted worker runs the project's own code, and mounts what it is given.
+    assert described(worker("u", run)) == "accepted"
+
+
+def test_a_mount_of_a_trusted_component_is_kept_inside_no_directory() -> None:
+    run = Container(IMAGE, ["work"], mounts=[Mount("workers/t1", "/state")])
+    plan = container_plan(
+        desktop(worker("t1", run)),
+        "t1",
+        run,
+        {},
+        front_port=8420,
+        worker_port=8421,
+        user=None,
+    )
+    assert [m.within for m in plan.mounts] == [None]
 
 
 @pytest.mark.parametrize(
@@ -271,7 +322,13 @@ async def test_the_docker_shape_starts_in_order_and_gives_each_part_its_share() 
         (),
     )
     assert untrusted.mounts == (
-        MountPlan(DATA / "workers/u1", "/state", False, create=True),
+        MountPlan(
+            DATA / "workers/u1",
+            "/state",
+            False,
+            create=True,
+            within=DATA / "workers/u1",
+        ),
     )
     assert untrusted.environment == {
         "ENGINE": "echo",

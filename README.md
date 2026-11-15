@@ -88,11 +88,13 @@ It ships two packages:
   workers, and `sandbox`, which has no way out, for the backend and the
   untrusted workers. A container on `sandbox` reaches the worker listener
   alone. Both listeners are published on the host's loopback address. An
-  untrusted worker runs in a container, and gets its token, the worker
-  listener's address and what its description names. The launcher runs the
-  `docker` command, and refuses to start while Docker is not running. A stop
-  removes the containers and the networks. A start first removes what a
-  crashed start left on the same data directory.
+  untrusted worker runs in a container, and gets its token and the worker
+  listener's address. It mounts its own directory, `workers/<name>` in the
+  data directory, or a directory inside it: the launcher refuses any other
+  path of the host, and a link that leads out of that directory. The
+  launcher runs the `docker` command, and refuses to start while Docker is
+  not running. A stop removes the containers and the networks. A start first
+  removes what a crashed start left on the same data directory.
 
 ## Provenance
 
