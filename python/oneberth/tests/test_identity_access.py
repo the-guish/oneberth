@@ -470,7 +470,7 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
     assert worker.grant == Grant("neorc/worker", "q")
 
 
-@pytest.mark.parametrize(
+REFUSED_TOKENS = pytest.mark.parametrize(
     ("name", "role", "resource", "expires_in", "problem"),
     [
         ("w", "neorc/worker", None, None, "needs a queue"),
@@ -485,6 +485,9 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
         ("w", "oneberth/admin", None, None, "a role for people"),
     ],
 )
+
+
+@REFUSED_TOKENS
 async def test_a_service_token_refused(
     access: Access,
     name: str,
@@ -952,3 +955,86 @@ async def test_the_local_user_is_nobody_outside_the_local_mode(
         await providers.authenticate(signed_in.secret, bearer=False)
     with pytest.raises(PermissionDeniedError):
         await providers.create_ticket(await launcher(local))
+
+
+# The tokens of the parts a backend starts itself.
+
+
+@pytest.mark.parametrize("mode", ["providers", "local"])
+async def test_the_backend_mints_a_token_in_memory_for_a_part_it_starts(
+    store: MemoryIdentityStore, clock: ManualClock, mode: str
+) -> None:
+    asked: list[tuple[str, str | None]] = []
+
+    async def check(role: str, resource: str | None) -> str | None:
+        asked.append((role, resource))
+        return await queues_open(role, resource)
+
+    access = Access(
+        store,
+        Registry([ONEBERTH_ROLES, NEORC]),
+        POLICY if mode == "providers" else None,
+        clock=clock,
+        local=mode == "local",
+        service_token_checks={"neorc": check},
+    )
+    if mode == "local":
+        await access.start_local(LAUNCH, name="Ada")
+
+    secret, token = await access.create_own_token(
+        "worker-1", "neorc/worker", resource="q"
+    )
+    short, _ = await access.create_own_token(
+        "ci", "neorc/ci", expires_in=timedelta(hours=1)
+    )
+    worker = await access.authenticate(secret, bearer=True)
+    assert worker.grants == {Grant("neorc/worker", "q")}
+    assert access.allows(worker, "neorc/tasks:claim", "q")
+    assert not access.allows(worker, "neorc/tasks:claim", "other")
+    assert await store.service_tokens() == []
+    names = [t.name for t in await access.service_tokens(by=OPERATOR)]
+    assert names == ["ci", "worker-1"]
+    with pytest.raises(InvalidValueError, match="'closed' is not declared"):
+        await access.create_own_token("w2", "neorc/worker", resource="closed")
+    assert asked == [
+        ("neorc/worker", "q"),
+        ("neorc/ci", None),
+        ("neorc/worker", "closed"),
+    ]
+
+    clock.advance(timedelta(hours=1))
+    with pytest.raises(AuthenticationError, match="expired"):
+        await access.authenticate(short, bearer=True)
+    await access.authenticate(secret, bearer=True)
+
+    if mode == "local":
+        await access.stop_local()
+    else:
+        access.end_tokens_in_memory()
+    with pytest.raises(AuthenticationError):
+        await access.authenticate(secret, bearer=True)
+    assert token.expires_at is None
+
+
+async def test_an_admin_revokes_a_token_the_backend_minted(access: Access) -> None:
+    secret, token = await access.create_own_token("ci", "neorc/ci")
+    await access.revoke_service_token(token.id, by=await browser(access))
+    with pytest.raises(AuthenticationError):
+        await access.authenticate(secret, bearer=True)
+
+
+@REFUSED_TOKENS
+async def test_a_token_in_memory_refused(
+    access: Access,
+    name: str,
+    role: str,
+    resource: str | None,
+    expires_in: timedelta | None,
+    problem: str,
+) -> None:
+    await access.create_own_token("taken", "neorc/ci")
+
+    with pytest.raises(InvalidValueError, match=problem):
+        await access.create_own_token(
+            name, role, resource=resource, expires_in=expires_in
+        )

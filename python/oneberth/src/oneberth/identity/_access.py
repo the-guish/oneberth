@@ -255,8 +255,6 @@ class _Launch:
     user: User
     tickets: dict[str, datetime]
     """The hash of each ticket waiting, and when it ends."""
-    tokens: dict[str, ServiceToken]
-    """The service tokens the launcher minted, by hash. They end at the stop."""
 
 
 class Access:
@@ -265,6 +263,11 @@ class Access:
     In the local mode, the deployment has one user, the person at the machine,
     who holds every role a person can hold. ``start_local`` takes the launch
     secret, and ``stop_local`` ends what the start made.
+
+    Some service tokens live in memory alone: those the launcher mints, and
+    those the backend mints for a part it starts itself, in either mode
+    (``create_own_token``). They end with the process, or at
+    ``end_tokens_in_memory``.
     """
 
     def __init__(
@@ -307,6 +310,8 @@ class Access:
         self._swept_at: datetime | None = None
         self._local = local
         self._launch: _Launch | None = None
+        self._in_memory: dict[str, ServiceToken] = {}
+        """The service tokens kept in memory alone, by the hash of the secret."""
         self._token_checks = checks
 
     @property
@@ -368,15 +373,16 @@ class Access:
             secret_hash=secret_hash(launch_secret),
             created_at=now,
         )
-        self._launch = _Launch(launcher, user, tickets={}, tokens={})
+        self._launch = _Launch(launcher, user, tickets={})
         return user
 
     async def stop_local(self) -> None:
-        """End the launch secret, the tickets, the launcher's tokens and every
-        session of this start."""
+        """End the launch secret, the tickets, the tokens kept in memory and
+        every session of this start."""
         if self._launch is None:
             return
         self._launch = None
+        self.end_tokens_in_memory()
         await self._store.delete_sessions()
 
     def _started(self) -> _Launch:
@@ -543,9 +549,11 @@ class Access:
                 launcher = launch.launcher
                 return Principal(launcher, frozenset({launcher.grant}), bearer=True)
             case CredentialKind.SERVICE_TOKEN:
-                launched = None if launch is None else launch.tokens.get(hashed)
-                if launched is not None:
-                    return Principal(launched, frozenset({launched.grant}), bearer=True)
+                held = self._in_memory.get(hashed)
+                if held is not None:
+                    if held.expires_at is not None and held.expires_at <= now:
+                        raise AuthenticationError("the service token has expired")
+                    return Principal(held, frozenset({held.grant}), bearer=True)
                 token = await self._store.service_token_by_hash(hashed, now)
                 if token is None:
                     raise AuthenticationError(
@@ -843,6 +851,55 @@ class Access:
         ``ServiceTokenCheck``, if it gave one.
         """
         self._managing(by)
+        grant = await self._checked_grant(name, role, resource, expires_in)
+        now = self.now()
+        if not isinstance(by, Operator) and self._is_launcher(by):
+            self._started()
+            return self._token_in_memory(name, grant, now, expires_in)
+        secret = new_secret(CredentialKind.SERVICE_TOKEN)
+        token = ServiceToken(
+            id=uuid.uuid4(),
+            name=name,
+            grant=grant,
+            secret_hash=secret_hash(secret),
+            created_at=now,
+            expires_at=None if expires_in is None else now + expires_in,
+        )
+        if not await self._store.add_service_token(token):
+            raise InvalidValueError(f"a service token called {name!r} exists")
+        return secret, token
+
+    async def create_own_token(
+        self,
+        name: str,
+        role: str,
+        *,
+        resource: str | None = None,
+        expires_in: timedelta | None = None,
+    ) -> tuple[str, ServiceToken]:
+        """A service token for a part this backend starts itself, and its secret.
+
+        It works in both modes, and needs no launch secret. It is kept in
+        memory alone, and ends with the process or at ``end_tokens_in_memory``.
+        It passes the checks of any service token, the application's included.
+        """
+        grant = await self._checked_grant(name, role, resource, expires_in)
+        return self._token_in_memory(name, grant, self.now(), expires_in)
+
+    def end_tokens_in_memory(self) -> None:
+        """End every service token kept in memory: the launcher's and the
+        backend's own. A backend does it at its stop."""
+        self._in_memory.clear()
+
+    async def _checked_grant(
+        self,
+        name: str,
+        role: str,
+        resource: str | None,
+        expires_in: timedelta | None,
+    ) -> Grant:
+        """The grant of a new service token, once oneberth's checks and the
+        application's pass."""
         if not is_service_name(name):
             raise InvalidValueError(
                 f"{name!r} is not a service token name: up to 100 letters, digits, "
@@ -864,27 +921,12 @@ class Access:
             refused = await check(role, resource)
             if refused is not None:
                 raise InvalidValueError(refused)
-        now = self.now()
-        if not isinstance(by, Operator) and self._is_launcher(by):
-            return self._launched_token(name, grant, now, expires_in)
-        secret = new_secret(CredentialKind.SERVICE_TOKEN)
-        token = ServiceToken(
-            id=uuid.uuid4(),
-            name=name,
-            grant=grant,
-            secret_hash=secret_hash(secret),
-            created_at=now,
-            expires_at=None if expires_in is None else now + expires_in,
-        )
-        if not await self._store.add_service_token(token):
-            raise InvalidValueError(f"a service token called {name!r} exists")
-        return secret, token
+        return grant
 
-    def _launched_token(
+    def _token_in_memory(
         self, name: str, grant: Grant, now: datetime, expires_in: timedelta | None
     ) -> tuple[str, ServiceToken]:
-        launch = self._started()
-        if any(token.name == name for token in launch.tokens.values()):
+        if any(token.name == name for token in self._in_memory.values()):
             raise InvalidValueError(f"a service token called {name!r} exists")
         secret = new_secret(CredentialKind.SERVICE_TOKEN)
         token = ServiceToken(
@@ -895,27 +937,24 @@ class Access:
             created_at=now,
             expires_at=None if expires_in is None else now + expires_in,
         )
-        launch.tokens[token.secret_hash] = token
+        self._in_memory[token.secret_hash] = token
         return secret, token
 
     async def service_tokens(self, *, by: Principal | Operator) -> list[ServiceToken]:
-        """Every service token, by name: the store's, and the launcher's."""
+        """Every service token, by name: the store's, and those kept in memory."""
         self._managing(by)
         stored = await self._store.service_tokens()
-        if self._launch is None:
-            return stored
-        launched = list(self._launch.tokens.values())
-        return sorted([*stored, *launched], key=lambda token: (token.name, token.id))
+        held = list(self._in_memory.values())
+        return sorted([*stored, *held], key=lambda token: (token.name, token.id))
 
     async def revoke_service_token(
         self, token_id: uuid.UUID, *, by: Principal | Operator
     ) -> None:
         self._managing(by)
-        if self._launch is not None:
-            for hashed, token in list(self._launch.tokens.items()):
-                if token.id == token_id:
-                    del self._launch.tokens[hashed]
-                    return
+        for hashed, token in list(self._in_memory.items()):
+            if token.id == token_id:
+                del self._in_memory[hashed]
+                return
         if not await self._store.delete_service_token(token_id):
             raise NotFoundError("there is no such service token")
 
