@@ -373,3 +373,49 @@ def test_a_grant_names_a_role_and_the_resource_it_needs(
 ) -> None:
     with pytest.raises(InvalidValueError, match=problem):
         REGISTRY.check_grant(grant)
+
+
+@pytest.mark.parametrize(
+    ("permission", "expected"),
+    [
+        ("neorc/tasks:claim", True),
+        ("neorc/runs:read", False),
+        ("neorc/flows:upload", False),
+        (TOKENS_MANAGE, False),
+        ("neorc/unknown:x", False),
+    ],
+)
+def test_a_worker_role_is_one_bound_to_a_resource(
+    permission: str, expected: bool
+) -> None:
+    assert REGISTRY.held_by_worker_role(permission) is expected
+
+
+@pytest.mark.parametrize(
+    ("grants", "permission", "expected"),
+    [
+        (frozenset({Grant("neorc/worker", "gpu")}), "neorc/tasks:claim", (True, "gpu")),
+        (
+            frozenset({Grant("neorc/worker", "gpu"), Grant("neorc/worker", "cpu")}),
+            "neorc/tasks:claim",
+            (True, None),
+        ),
+        (
+            frozenset({Grant("neorc/worker", "gpu"), Grant("neorc/user")}),
+            "neorc/runs:read",
+            (True, None),
+        ),
+        (frozenset({Grant("neorc/user")}), "neorc/tasks:claim", (False, None)),
+        (frozenset(), "neorc/tasks:claim", (False, None)),
+    ],
+)
+def test_the_resource_a_grant_confines_a_permission_to(
+    grants: frozenset[Grant], permission: str, expected: tuple[bool, str | None]
+) -> None:
+    assert REGISTRY.bound_resource(grants, permission) == expected
+
+
+def test_the_roles_a_service_token_may_hold() -> None:
+    names = [role.name for role in REGISTRY.service_roles]
+
+    assert names == ["neorc/worker", "neorc/ci"]

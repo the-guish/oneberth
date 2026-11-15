@@ -340,6 +340,9 @@ async def test_a_phone_is_linked_and_removed(
     assert device.expires_at == clock.now + timedelta(days=30)
     assert phone.kind is CredentialKind.DEVICE and phone.roles == ada.roles
     assert await access.devices(phone) == [device]
+    assert access.require_device(phone) == device
+    with pytest.raises(PermissionDeniedError, match="linked device"):
+        access.require_device(ada)
     with pytest.raises(BearerRefusedError):
         await access.remove_device(phone, device.id)
 
@@ -429,6 +432,10 @@ async def test_the_operator_makes_a_worker_token_bound_to_one_queue(
             access.authorize(worker, permission, resource)
     with pytest.raises(PermissionDeniedError, match="no personal credentials"):
         await access.personal_tokens(worker)
+    assert access.bound_resource(worker, "neorc/tasks:claim") == "python-gpu"
+    with pytest.raises(PermissionDeniedError):
+        access.bound_resource(worker, "neorc/runs:start")
+    assert access.bound_resource(await browser(access), "neorc/runs:start") is None
 
 
 async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(

@@ -438,8 +438,13 @@ class Access:
         """Sign everyone out; how many sessions there were. The operator's."""
         return await self._store.delete_sessions()
 
-    def _browsing(self, principal: Principal, *, fresh: bool = False) -> User:
-        """The user of a browser session; ``fresh`` asks for a young one too."""
+    def require_browser(self, principal: Principal, *, fresh: bool = False) -> User:
+        """The user of a browser session; ``fresh`` asks for one younger than
+        ``FRESH_SIGN_IN``.
+
+        Raises ``BearerRefusedError`` for any other credential, and
+        ``FreshSignInRequiredError`` for an older session.
+        """
         if principal.user is None or not principal.is_browser_session:
             raise BearerRefusedError(
                 "a person's credentials are minted and removed from their browser"
@@ -450,6 +455,31 @@ class Access:
                 f"{FRESH_SIGN_IN.seconds // 60} minutes"
             )
         return principal.user
+
+    @staticmethod
+    def require_device(principal: Principal) -> DeviceSession:
+        """The linked phone that asks; ``PermissionDeniedError`` for anyone else."""
+        if not isinstance(principal.credential, DeviceSession):
+            raise PermissionDeniedError("this is for a linked device alone")
+        return principal.credential
+
+    def bound_resource(self, principal: Principal, permission: str) -> str | None:
+        """The one resource ``principal`` may use ``permission`` on, such as a
+        worker's queue; ``None`` when it may use it on every resource.
+
+        Raises ``PermissionDeniedError`` when it may not use it at all, or when
+        its grants name several resources, so the request must name one.
+        """
+        holds, resource = self._registry.bound_resource(principal.grants, permission)
+        if not holds:
+            raise PermissionDeniedError(f"{principal.name} may not {permission}")
+        if resource is None and not self._registry.allows(
+            (g for g in principal.grants if g.resource is None), permission
+        ):
+            raise PermissionDeniedError(
+                f"{principal.name} holds {permission} on several resources: name one"
+            )
+        return resource
 
     @staticmethod
     def _person(principal: Principal) -> User:
@@ -463,7 +493,7 @@ class Access:
         self, principal: Principal, name: str
     ) -> tuple[str, PersonalToken]:
         """A new personal token and its secret, which is shown once."""
-        user = self._browsing(principal, fresh=True)
+        user = self.require_browser(principal, fresh=True)
         if not is_token_name(name):
             raise InvalidValueError(
                 f"{name!r} is not a token name: up to {_MAX_TOKEN_NAME} printable "
@@ -488,7 +518,7 @@ class Access:
     async def revoke_personal_token(
         self, principal: Principal, token_id: uuid.UUID
     ) -> None:
-        user = self._browsing(principal)
+        user = self.require_browser(principal)
         if not await self._store.delete_personal_token(user.id, token_id):
             raise NotFoundError("you have no such token")
 
@@ -496,7 +526,7 @@ class Access:
 
     async def begin_pairing(self, principal: Principal) -> tuple[str, Pairing]:
         """A waiting pairing of the person, and its code, for the browser's QR."""
-        user = self._browsing(principal, fresh=True)
+        user = self.require_browser(principal, fresh=True)
         now = self.now()
         code = random_secret()
         pairing = Pairing(
@@ -536,7 +566,7 @@ class Access:
 
     async def pairing(self, principal: Principal, pairing_id: uuid.UUID) -> Pairing:
         """The person's pairing, for the browser's poll."""
-        user = self._browsing(principal)
+        user = self.require_browser(principal)
         pairing = await self._store.pairing_of(user.id, pairing_id)
         if pairing is None or pairing.expires_at <= self.now():
             raise NotFoundError("you have no such pairing waiting")
@@ -546,7 +576,7 @@ class Access:
         self, principal: Principal, pairing_id: uuid.UUID, typed: str
     ) -> DeviceSession:
         """Link the phone that claimed the pairing, if ``typed`` is its number."""
-        user = self._browsing(principal)
+        user = self.require_browser(principal)
         now = self.now()
         outcome, device = await self._store.approve_pairing(
             user.id,
@@ -570,7 +600,7 @@ class Access:
 
     async def refuse_pairing(self, principal: Principal, pairing_id: uuid.UUID) -> None:
         """A code cancelled, or a phone refused: the pairing goes."""
-        user = self._browsing(principal)
+        user = self.require_browser(principal)
         if not await self._store.delete_pairing(user.id, pairing_id):
             raise NotFoundError("you have no such pairing waiting")
 
@@ -585,7 +615,7 @@ class Access:
         return await self._store.devices_of(self._person(principal).id)
 
     async def remove_device(self, principal: Principal, device_id: uuid.UUID) -> None:
-        user = self._browsing(principal)
+        user = self.require_browser(principal)
         if not await self._store.delete_device(user.id, device_id):
             raise NotFoundError("you have no such device")
 

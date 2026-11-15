@@ -73,6 +73,8 @@ from oneberth.identity._records import (
     User,
 )
 from oneberth.identity._roles import (
+    ADMIN_ROLE,
+    LAUNCHER_ROLE,
     ONEBERTH_ROLES,
     TICKETS_CREATE,
     TOKENS_MANAGE,
@@ -95,11 +97,13 @@ from oneberth.identity._secrets import (
 from oneberth.identity._store import SCHEMA_VERSION, IdentityStore, check_schema
 
 __all__ = [
+    "ADMIN_ROLE",
     "ALLOW_CHECK_EVERY",
     "DEFAULT_DEVICE_DAYS",
     "DEFAULT_SESSION_HOURS",
     "FRESH_SIGN_IN",
     "LAST_USED_EVERY",
+    "LAUNCHER_ROLE",
     "LOCAL_PROVIDER",
     "MAX_PENDING_SIGN_INS",
     "ONEBERTH_ROLES",

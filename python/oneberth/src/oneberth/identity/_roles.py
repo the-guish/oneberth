@@ -161,6 +161,55 @@ class Registry:
     def has_permission(self, permission: str) -> bool:
         return permission in self._permissions
 
+    @property
+    def roles(self) -> tuple[Role, ...]:
+        """Every role registered, in the order of the tables."""
+        return tuple(self._roles.values())
+
+    @property
+    def service_roles(self) -> tuple[Role, ...]:
+        """The roles an admin may give a service token: every role that is not
+        for people, but the launcher's, which the launch secret alone holds."""
+        return tuple(
+            role
+            for role in self._roles.values()
+            if not role.people and role.name != LAUNCHER_ROLE
+        )
+
+    def held_by_worker_role(self, permission: str) -> bool:
+        """Whether a worker role holds ``permission``.
+
+        A worker role is a role whose grants are bound to one resource, such
+        as ``neorc/worker`` to a queue. A route that needs such a permission
+        is served on the worker listener too.
+        """
+        return any(
+            role.resource is not None and permission in role.permissions
+            for role in self._roles.values()
+        )
+
+    def bound_resource(
+        self, grants: Iterable[Grant], permission: str
+    ) -> tuple[bool, str | None]:
+        """Whether ``grants`` hold ``permission``, and the one resource they
+        confine it to; ``None`` when a grant holds it on every resource.
+
+        A worker's route that names no resource in its path reads it from here,
+        as neorc's worker reads its queue from its token.
+        """
+        bound: set[str] = set()
+        for grant in grants:
+            role = self._roles.get(grant.role)
+            if role is None or permission not in role.permissions:
+                continue
+            if grant.resource is None:
+                return True, None
+            bound.add(grant.resource)
+        if len(bound) == 1:
+            return True, bound.pop()
+        # Two bound grants confine it to no one resource: the route must name one.
+        return bool(bound), None
+
     def role(self, name: str) -> Role:
         """The role called ``name``; ``InvalidValueError`` when none is registered."""
         found = self._roles.get(name)
@@ -210,12 +259,15 @@ TOKENS_MANAGE = "oneberth/tokens:manage"
 TICKETS_CREATE = "oneberth/tickets:create"
 """Ask for a ticket that signs the local user in. The launch secret's alone."""
 
+ADMIN_ROLE = "oneberth/admin"
+LAUNCHER_ROLE = "oneberth/launcher"
+
 ONEBERTH_ROLES = RoleTable(
     app="oneberth",
     permissions=frozenset({TOKENS_MANAGE, TICKETS_CREATE}),
     roles=(
-        Role("oneberth/admin", frozenset({TOKENS_MANAGE}), people=True),
-        Role("oneberth/launcher", frozenset({TOKENS_MANAGE, TICKETS_CREATE})),
+        Role(ADMIN_ROLE, frozenset({TOKENS_MANAGE}), people=True),
+        Role(LAUNCHER_ROLE, frozenset({TOKENS_MANAGE, TICKETS_CREATE})),
     ),
 )
 """oneberth's own permissions and roles, registered like any application's."""
