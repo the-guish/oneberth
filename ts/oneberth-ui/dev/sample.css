@@ -1,0 +1,60 @@
+/* Copyright 2026 The oneberth Authors */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* The sample applications of the development page. Their prefix is `sample-`. */
+
+.sample-app {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sample-panel {
+  flex: none;
+  width: 14rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.oneberth-drawer-slot .sample-panel {
+  width: auto;
+  border-right: 0;
+}
+
+.sample-list {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  list-style: none;
+}
+
+.sample-list a {
+  color: var(--link);
+}
+
+.sample-list a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.sample-page {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 1.5rem 2rem;
+}
+
+.sample-field {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 30rem;
+}
+
+.sample-field textarea {
+  font: inherit;
+  padding: 0.5rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
