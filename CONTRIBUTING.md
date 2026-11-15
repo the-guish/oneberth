@@ -36,6 +36,8 @@ The library's modules:
     oneberth/admin.py             the admin scripts, and the `oneberth` command
     oneberth/web/                 components, compose_app, /auth, the server (extra: web)
     oneberth/web/testing.py       what an application's tests use to drive a composition
+    oneberth/launcher/            the launcher and the window of the desktop
+    oneberth/launcher/testing.py  stand-ins of the launcher's ports, and a manual timer
 
 Test modules have names unique across the repository, such as `test_identity_rules.py`.
 pytest and mypy collect them in one run. Shared fixtures go in the root `conftest.py`.

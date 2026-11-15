@@ -45,7 +45,18 @@ It ships two packages:
   `GET /auth/local?ticket=…` swaps a ticket for the session cookie. A start by
   hand makes its own secret and prints the address with a ticket.
 
-The launcher and the window come later.
+- The launcher, `oneberth.launcher`, for the desktop as processes. An application
+  describes its backend, its workers and its data directory with an `Application`,
+  and its command calls `launch`. The launcher starts the backend with the launch
+  secret on its standard input and waits for `ready`. It mints a service token per
+  worker and starts each worker with its token on its standard input. It then asks
+  for a ticket and opens the window. The window is Chrome or Chromium with `--app`,
+  on a profile in the data directory. Closing it stops the application: the
+  workers first, the backend last. One launcher runs per data directory, and a
+  second start brings the window forward. The front listener keeps its port
+  across starts. `oneberth.launcher.testing` holds stand-ins of its ports.
+
+The desktop with Docker comes later.
 
 ## Provenance
 
@@ -53,7 +64,8 @@ The web part is written from neorc's `manager/` (`_access.py`, `_auth_routes.py`
 `_sign_in.py`, `_ui.py`; Apache-2.0, The neorc Authors) and Robinauts' `web/`
 (`cookies.py`, `headers.py`, `pairing.py`, the `/auth` routes of `app.py` and
 the check of a local `Host`;
-Apache-2.0, The Robinauts Authors). The QR encoder follows ISO/IEC 18004, and its
+Apache-2.0, The Robinauts Authors). The launcher is written from Robinauts'
+`cli/lifecycle.py` (Apache-2.0, The Robinauts Authors). The QR encoder follows ISO/IEC 18004, and its
 tests compare it with `qrcodegen`.
 
 ## Documents
