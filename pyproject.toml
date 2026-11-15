@@ -52,6 +52,9 @@ addopts = [
     "--import-mode=importlib",
 ]
 asyncio_mode = "auto"
-markers = ["postgres: needs a PostgreSQL server; skipped unless ONEBERTH_TEST_DATABASE_URL is set"]
+markers = [
+    "postgres: needs a PostgreSQL server; skipped unless ONEBERTH_TEST_DATABASE_URL is set",
+    "docker: needs a Docker daemon; skipped without one",
+]
 asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true

@@ -37,7 +37,10 @@ The library's modules:
     oneberth/web/                 components, compose_app, /auth, the server (extra: web)
     oneberth/web/testing.py       what an application's tests use to drive a composition
     oneberth/launcher/            the launcher and the window of the desktop
-    oneberth/launcher/testing.py  stand-ins of the launcher's ports, and a manual timer
+    oneberth/launcher/_shape.py   the shape, and what each component gets in it
+    oneberth/launcher/_docker.py  the Docker port on the `docker` command
+    oneberth/launcher/testing.py  stand-ins of the launcher's ports, Docker in memory,
+                                  and a manual timer
 
 Test modules have names unique across the repository, such as `test_identity_rules.py`.
 pytest and mypy collect them in one run. Shared fixtures go in the root `conftest.py`.
@@ -72,6 +75,14 @@ served by a composed backend. It needs the page built, with Node.js 24:
 Playwright then looks for its own Chromium. Set `ONEBERTH_TEST_CHROMIUM` to the
 executable of another one. Without the page or a browser, the test skips. CI
 builds both for one Python.
+
+## Tests that need Docker
+
+The tests of the launcher's Docker shape run against the real Docker daemon.
+They are marked `docker`, and `uv run pytest -m "not docker"` leaves them out.
+They build an image from `python:3.12-slim` once per run, with the checkout
+and its web dependencies, which `uv` gathers on the host. They skip without a
+daemon or `uv`. CI runs them, since its runners have Docker.
 
 ## Licence headers
 
