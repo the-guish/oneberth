@@ -1,8 +1,6 @@
 # Identity: sign-in, sessions, tokens and roles
 
 oneberth answers two questions for a backend: who is asking, and may that principal do this.
-The design is the one neorc and Robinauts share today, with the stronger rule kept where
-the two differ ([review.md](review.md), "What the code holds today").
 
 ## Words
 
@@ -26,7 +24,7 @@ the two differ ([review.md](review.md), "What the code holds today").
   A third store keeps everything in memory, for tests.
 - oneberth creates its own tables. The setup is safe to repeat.
 - The store holds its schema version. A backend built for another version refuses to start.
-- The three stores pass one contract suite, as neorc's stores do.
+- The three stores pass one contract suite.
 
 ## Sign-in
 
@@ -35,7 +33,7 @@ The two modes exclude each other.
 
 ### Through identity providers
 
-This is the cluster's mode. The rules come from both applications unchanged.
+This is the cluster's mode.
 
 - Google and Okta sign people in over OpenID Connect. One generic client on `httpx` serves both.
 - The flow is the authorization code flow with `state`, `nonce` and PKCE (S256).
@@ -58,11 +56,9 @@ This is the desktop's mode, and the mode for development.
   `/auth/local?ticket=…`. The backend swaps the ticket for a session cookie.
 - A ticket works once, within one minute.
 - The front listener accepts requests whose `Host` is `localhost` or an IP address.
-  This defeats DNS rebinding, as in Robinauts' local mode today.
+  This defeats DNS rebinding.
 - A start command without a launcher signs the person in itself. It prints the URL with the ticket.
-- The local mode replaces `neorc manager start --no-auth` and
-  `robinauts start --dev-no-sign-in`. A request in those modes has no credential, and an
-  untrusted worker beside the backend could then act as the person.
+- Development uses the local mode too. No start option serves a request without a credential.
 
 ## Users
 
@@ -93,8 +89,16 @@ Every secret is 256 random bits. The store keeps its SHA-256.
   interface, or the launcher. The operator also creates one with the command line.
 - A token the launcher mints ends when the application stops.
 - Taking access away needs no fresh sign-in.
-- Device pairing works as Robinauts specifies it today: a QR code in the browser, a number on
-  the phone, typed into the browser.
+
+## Device pairing
+
+- A phone is linked from the browser. The browser shows a QR code, and the phone scans it.
+- The code names the server. Nobody types an address into a phone.
+- The phone presents the code and gets a secret and a six-digit number. The secret does
+  nothing until the pairing is approved.
+- The person types the number into the browser. The secret then becomes the device's session.
+- A code works once, within two minutes.
+- The person sees every linked device in the browser and removes any of them there.
 
 ## Roles
 
@@ -126,8 +130,7 @@ The roles at the start:
 - A person's roles are decided at sign-in and checked again with the allow list.
 - The local user holds every role a person can hold.
 
-neorc's permission table is in `neorc-core` today, as `PERMISSIONS`.
-`neorc-core` keeps the table as plain data and asks its decisions through a port.
+`neorc-core` holds neorc's permission table as plain data and asks its decisions through a port.
 The `neorc` application registers the table with oneberth and gives the port its answer.
 
 ## Checks on a request
@@ -153,7 +156,7 @@ A composition serves these under `/auth`.
 | `GET /auth/local` | swaps a ticket for a session, in the local mode |
 | `POST /auth/logout` | ends the session, or the device that asks |
 | `POST`, `GET /auth/tokens`, `DELETE /auth/tokens/{id}` | personal tokens |
-| `/auth/pairings…`, `/auth/devices…` | device pairing, as in Robinauts today |
+| `/auth/pairings…`, `/auth/devices…` | device pairing and the linked devices |
 | `/auth/services…` | service tokens, for a principal with `oneberth/tokens:manage` |
 | `POST /auth/tickets` | a ticket, for the launch secret alone |
 
@@ -239,5 +242,7 @@ oneberth holds the admin scripts both applications reuse.
 
 ## Open
 
-[review.md](review.md), "Open questions", holds the points this document leaves open:
-tokens with fewer roles than their person, sign-out at the provider, and the limit on sign-ins.
+- A token with fewer roles than its person.
+- Sign-out at the identity provider.
+- A limit on the rate of sign-ins.
+- Sign-in through a provider on the desktop.

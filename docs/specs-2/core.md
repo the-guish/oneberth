@@ -6,11 +6,6 @@ oneberth is the shared base of neorc and Robinauts.
 It holds sign-in, sessions, tokens, roles, the web application, the application shell, the
 admin scripts and the desktop launcher.
 
-neorc and Robinauts each have a copy of the same sign-in code today.
-Robinauts wrote its copy from neorc's design, and the two copies now differ
-([review.md](review.md), "What the code holds today").
-oneberth holds the one copy both applications use.
-
 oneberth is a library. A backend is a composition that oneberth builds from the
 components of one or more applications ([composition.md](composition.md)).
 "One place" means one code base and one store per deployment.
@@ -20,7 +15,7 @@ components of one or more applications ([composition.md](composition.md)).
 1. **One pattern, four shapes.** The same components run in a cluster, as desktop processes
    and in desktop containers. A shape changes who starts a component and where it listens.
 2. **Identity in one place.** Sign-in, sessions, tokens and roles live in oneberth.
-   neorc and Robinauts keep the permissions each route needs and the checks on ownership.
+   neorc and Robinauts hold the permissions each route needs and the checks on ownership.
 3. **A credential on every request.** Every shape has a signed-in person or a token behind
    each request. The desktop signs its one person in locally.
 4. **Dependencies point one way.** oneberth knows neither application. neorc knows oneberth.
@@ -40,8 +35,6 @@ components of one or more applications ([composition.md](composition.md)).
 
 The node packages hold browser code. An application's build compiles them into its bundle.
 Production runs no Node process.
-
-The package names are proposals. Nothing is published under them yet.
 
 ## Dependencies
 
@@ -64,13 +57,30 @@ flowchart TD
 
 Robinauts depends on `neorc`, the application.
 Robinauts composes neorc's manager into its backend, and the manager's routes and
-stores live in `neorc`. `neorc-core` alone would make Robinauts write them again.
+stores live in `neorc`.
 
-`neorc-core` stays free of oneberth. It names its permissions and roles as plain data, and
+`neorc-core` imports nothing of oneberth. It names its permissions and roles as plain data, and
 the `neorc` application gives that data to oneberth ([identity.md](identity.md), "Roles").
 
 The node packages follow the same direction. The neorc interface package names
 `@oneberth/ui` and React as peer dependencies, and the host application brings one copy of each.
+
+## Who holds what
+
+| responsibility | held by |
+|---|---|
+| identities, users, the allow list, sessions, tokens, device pairing | oneberth |
+| the OpenID Connect client and the sign-in configuration | oneberth |
+| the stores of users and credentials: memory, PostgreSQL, SQLite | oneberth |
+| the check of a permission | oneberth |
+| the table of an application's permissions and roles | each application |
+| the checks on ownership, such as whose conversation this is | each application |
+| the web application, its server, the `/auth` routes, the checks on a request, the security headers | oneberth |
+| the routes of an application, written in oneberth's contract | each application |
+| the admin scripts | oneberth |
+| the launcher and the window | oneberth |
+| the rail, the session in the browser, the sign-in page, the account pages | `@oneberth/ui` |
+| an application's own pages and panels | each application |
 
 ## Components
 
@@ -98,24 +108,9 @@ The node packages follow the same direction. The neorc interface package names
 
 [shapes.md](shapes.md) describes each shape.
 
-## What moves to oneberth
+## Details likely to change
 
-| today | in neorc | in Robinauts | in oneberth |
-|---|---|---|---|
-| identities, the allow list, sessions, pending sign-ins | `neorc_core/_access.py` | `web/sign_in.py` | the identity core |
-| the OpenID Connect client | `neorc/auth/_oidc.py` | `web/oidc.py` | the provider adapter |
-| the sign-in configuration | `neorc/auth/_config.py` | `web/sign_in.py` | the configuration reader |
-| cookies and the checks on a write | `manager/_sign_in.py`, `manager/_access.py` | `web/cookies.py`, `web/app.py` | the web adapter |
-| the `/auth/*` routes | `manager/_auth_routes.py` | `web/app.py` | the web adapter |
-| the credential stores | `ports/_credentials.py`, memory, PostgreSQL | `Credentials`, in process, PostgreSQL | one port; memory, PostgreSQL and SQLite stores |
-| roles and permissions | `Role`, `Permission`, `PERMISSIONS` | none | the role engine; each application declares its own table |
-| users | none | `users` | the store |
-| device pairing | none | `web/pairing.py` | the identity core |
-| token commands | `neorc tokens`, `neorc sessions` | `robinauts devices` | one set of commands |
-| the session in the browser, the sign-in page | `session.ts`, `SignIn.tsx` | `session/`, `devices/` | `@oneberth/ui` |
-| the security headers on the interface | `manager/_ui.py` | `web/headers.py` | the web adapter |
-| the web application and its server | `manager/_app.py`, `manager/_service.py` | `web/app.py`, `cli/main.py` | the composition |
-| the declaration of a route | `manager/_routes.py`, on FastAPI | `web/app.py`, `web/worker_api.py`, on FastAPI | each application, in oneberth's contract |
+- The names of the packages.
 
 ## Documents
 

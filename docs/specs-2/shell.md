@@ -17,8 +17,7 @@ The window has two parts: a rail on the left, and the application's area beside 
 - The rail is always shown, with one application too.
 
 Robinauts shows two icons, Robinauts and neorc. Standalone neorc shows one.
-The owner's picture of the rail shows a third icon, which no application has yet
-([review.md](review.md), "Open questions").
+A further application adds an icon.
 
 ## An application in the shell
 
@@ -49,14 +48,12 @@ The owner's picture of the rail shows a third icon, which no application has yet
 ## A small screen
 
 - The rail becomes a row of icons at the top of the application's drawer.
-- The drawer opens from one button, as the left panel does in both applications today.
+- The drawer opens from one button.
 
 ## Styles
 
-- The design tokens are CSS custom properties in `@oneberth/ui`. Both applications have a
-  copy of the same tokens today.
-- Every class name starts with its package's prefix. neorc's stylesheet is global and
-  unprefixed today, and gets a prefix before it shares a page with Robinauts.
+- The design tokens are CSS custom properties in `@oneberth/ui`. Every application uses them.
+- Every class name starts with its package's prefix.
 - The theme follows the operating system. The toggle is in the rail.
 
 ## What `@oneberth/ui` holds
@@ -71,7 +68,7 @@ The owner's picture of the rail shows a third icon, which no application has yet
 | the tokens | colours, radii and fonts as custom properties |
 
 - React and React DOM are its peer dependencies. It brings no other runtime dependency.
-- The session uses React's own store hook. neorc's session uses a query library today.
+- The session uses React's own store hook.
 
 ## The neorc interface as a package
 
@@ -80,23 +77,20 @@ The owner's picture of the rail shows a third icon, which no application has yet
 - The package exports one root component, the whole neorc application with its own left panel.
 - The root component takes the address of neorc's API. Robinauts gives it `/neorc/`.
 - The package names React, React DOM and `@oneberth/ui` as peer dependencies.
-- It brings a query library and two graph libraries. Robinauts' bundle has had React alone
-  until now, and takes these three through its licence gate.
+- It brings a query library and two graph libraries. Each passes the host's licence gate.
 
-## What each application stops having
+## What each application draws
 
-| application | stops having |
+| application | draws in its area |
 |---|---|
-| Robinauts | the Sessions and Flows tabs; its copy of neorc's navigation (`flows/FlowsSection.tsx`, `flows/orchestrator.ts`); the frame around neorc's interface (`flows/FlowsPage.tsx`); the profile block of its panel; `session/` and `devices/` |
-| neorc | the `?embedded` switch; the profile at the bottom of its sidebar; `session.ts` and `SignIn.tsx` |
+| Robinauts | a left panel of conversations and projects, the chat, the side panel |
+| neorc | a left panel of runs, flows and queues, and its pages |
 
-Robinauts keeps its left panel for conversations and projects. That panel sits inside
-Robinauts' area.
+The shell draws the rail, the sign-in page and the account pages. An application draws none of them.
 
 ## How a package reaches an application
 
-- Neither project publishes to a registry yet. An application pins a node package to a commit,
-  as Robinauts pins neorc's Python packages today.
+- An application pins a node package to one exact version or commit.
 - A package ships its TypeScript source. The application's own build compiles it, and no
   install script runs.
 - The three repositories move React together. A package accepts the host's React 19.
@@ -105,9 +99,8 @@ Robinauts' area.
 
 - The icons, and the width of the rail.
 - The names of the packages and of the root component.
-- Robinauts' bundle budget, which is 400 KB today and is measured again with neorc inside.
+- Robinauts' bundle budget.
 
 ## Open
 
-[review.md](review.md), Q6: where the form that starts a run lives, and who fills its lists
-of values.
+- Where the form that starts a run lives, and who fills its lists of values.

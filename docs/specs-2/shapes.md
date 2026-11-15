@@ -8,7 +8,6 @@ A shape decides who starts a component, where it listens and where the data live
 - A component is started by a supervisor. The supervisor is the platform in a cluster and
   the launcher everywhere else.
 - A backend starts nothing outside its own process.
-- Robinauts' server starts its own workers today. That job moves to the launcher.
 
 ## Listeners
 
@@ -31,8 +30,7 @@ An untrusted worker follows these rules:
 
 - It runs in a container or in a VM. A process on the host reaches every loopback port.
 - Its token is bound to one queue or to one worker name.
-- It reads only the tasks it holds. Robinauts' worker routes are wider today
-  ([review.md](review.md), F6).
+- It reads only the tasks it holds, and the sessions of those tasks.
 - It holds none of the operator's secrets: no model key, no database URL, no tool server secret.
 - It keeps its engines' state in storage of its own.
 
@@ -58,8 +56,8 @@ A token limits every worker, trusted or not. The network is the second limit.
 - The worker listener is a service of its own, kept off the public entry. A network policy
   lets the worker workloads reach that service alone.
 - One image per application serves the cluster and the desktop's Docker shape.
-- A single server stays a supported shape. `robinauts start` uses the launcher there for its
-  own processes, behind a reverse proxy, as [deployment.md](https://github.com/the-guish/robinauts/blob/main/docs/deployment.md) describes today.
+- A single server is a supported shape too. `robinauts start` uses the launcher there for
+  its own processes, behind a reverse proxy.
 
 ## The desktop, as processes
 
@@ -77,12 +75,12 @@ The configuration names at least one worker that runs in a container. The whole
 application then runs in this shape.
 
 - The launcher creates the networks, then starts the backend's container, the workers'
-  containers, the workers that stay processes, and the window.
+  containers, the workers that run as processes, and the window.
 - The backend runs in a container, from the image the cluster uses.
 - The data directory is the same host directory as in the processes shape, mounted into the
   backend's container. A person who adds a first Docker worker keeps their data.
 - The front listener is published on a loopback address of the host. The window opens there.
-- The worker listener is published on a loopback address too, for the workers that stay processes.
+- The worker listener is published on a loopback address too, for the workers that run as processes.
 - The launcher talks to Docker. The backend's container holds no Docker socket.
 - The launcher refuses to start while Docker is not running. It names the workers that need it.
 
@@ -118,22 +116,22 @@ flowchart LR
     launcher -. starts .-> uw
 ```
 
-One cost is known. A service on the host's loopback address, such as a local tool server or
-a local model, is outside the container. The backend and its workers reach it through the
+A service on the host's loopback address, such as a local tool server or a local model, is
+outside the container. The backend and its workers reach it through the
 host's gateway name.
 
 ## A worker in a VM
 
 - A VM worker is an untrusted worker. It follows the same rules as a container on `sandbox`.
 - The supervisor gives the VM a token and the address of the worker listener.
-- The path between the VM and the listener is open ([review.md](review.md), Q4).
+- The path between the VM and the listener is open.
 
 ## The launcher
 
 - The launcher is a part of the `oneberth` Python library. An application's command calls it.
 - The application gives the launcher a list of components. Each has a name, a command or an
   image, a trust level and the configuration it needs.
-- The launcher runs on Linux and macOS, like Robinauts today.
+- The launcher runs on Linux and macOS.
 - One launcher runs per data directory. A second start brings the first one's window forward.
 
 The launcher starts an application in this order:
@@ -169,12 +167,12 @@ The launch secret and the tokens of a start end at the stop.
 | an engine's state | the engine's tables | a folder per worker |
 
 - The backend's process alone opens the SQLite files.
-- neorc tells waiting workers about a new task through PostgreSQL's notifications today.
-  SQLite has none across processes. The manager on SQLite runs inside the backend and
-  notifies in memory.
-- The memory stores stay, for tests and for `neorc run`.
-- Three SQLite stores are new code: oneberth's, neorc's and Robinauts' controller's.
-  Each passes the contract suite of its port.
+- The manager on PostgreSQL tells waiting workers about a new task through the database's
+  notifications. SQLite has none across processes. The manager on SQLite runs inside the
+  backend and notifies in memory.
+- The memory stores serve tests and `neorc run`.
+- oneberth, neorc and Robinauts' controller each have a SQLite store. Each store passes the
+  contract suite of its port.
 
 ## Details likely to change
 
@@ -184,6 +182,7 @@ The launch secret and the tokens of a start end at the stop.
 
 ## Open
 
-[review.md](review.md) holds the open points of this document: the model keys of an
-untrusted worker (Q3), the path to a VM (Q4), what closing the window does (Q5), and SQLite
-on a directory shared with a container (F4).
+- How an untrusted worker reaches a model. It holds none of the operator's keys.
+- The path between a VM and the worker listener.
+- What closing the window does: stop the application, or leave it running.
+- The data directory with Docker on macOS: the host directory, or a Docker volume.

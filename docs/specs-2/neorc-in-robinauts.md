@@ -22,8 +22,6 @@ components over that address ([shell.md](shell.md)).
 - Robinauts composes its own component with neorc's. One process serves both.
 - Every request to `/neorc/` is checked for its credential and its neorc permission, like
   any other route of the composition.
-- neorc's manager has no authentication inside Robinauts today, and Robinauts allows it only
-  without sign-in. That limit goes away.
 - neorc's records are in the database of the backend: `neorc.db`, or the schema `neorc`.
 - neorc's scheduler is one of the things neorc's component starts on the desktop. A cluster
   runs it as a workload of its own, once.
@@ -70,17 +68,14 @@ components over that address ([shell.md](shell.md)).
   and turns.
 - Such a handler runs on a trusted worker and has a token for the front listener.
 - An untrusted worker has no route to the front listener, and these handlers do not run there.
-- Whose conversations such a handler creates is open ([review.md](review.md), Q7).
-
-## What Robinauts stops having
-
-- The manager served without authentication, and the rule that refuses flows while sign-in is on.
-- The rewrite of neorc's frame headers, `Framable`.
-- `flows_url` in the answer of `GET /auth/session`.
-- Its own client of neorc's API in the interface ([shell.md](shell.md), "What each application
-  stops having").
+- Whose conversations such a handler creates is open.
 
 ## Details likely to change
 
 - The list of headers passed on.
 - How often the version is read.
+
+## Open
+
+- Whether a cluster composes neorc's manager or forwards to one deployed apart.
+- Whose conversations a flow handler creates.

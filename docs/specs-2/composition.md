@@ -38,7 +38,7 @@ A route holds:
 A handler is a plain function. It receives the principal and the request's values, and it
 returns data or a stream. It imports nothing of the web framework.
 
-A route without a permission cannot be written. neorc holds this with a test today.
+A route without a permission cannot be written.
 
 ## Composing
 
@@ -97,9 +97,9 @@ another backend ([neorc-in-robinauts.md](neorc-in-robinauts.md), "Forwarded").
 
 ## What the contract covers
 
-Both applications use these today, and the contract has each:
+The contract covers what the two applications need:
 
-| need | used by |
+| need | needed by |
 |---|---|
 | values checked against a shape, in the path, the query and the body | every route |
 | an OpenAPI document, which each interface generates its typed client from | both applications |
