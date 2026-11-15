@@ -311,9 +311,10 @@ without sign-in. With sign-in the handler's token decides: the token of the pers
 started the run, or a service of its own.
 
 **Q8. Does the cluster compose or forward?** A composed backend is one deployment with no
-forwarding and no version check. It needs neorc's manager to run in several processes on
-one database, which neorc's specs do not state. Forwarding keeps the manager as one
-deployment of its own.
+forwarding and no version check. Each Robinauts replica then runs neorc's manager, and
+neorc's PostgreSQL notifier is built for several manager processes on one database.
+Forwarding keeps the manager as a deployment of its own, which scales and restarts apart
+from Robinauts.
 
 Smaller points, with no decision needed yet:
 
@@ -321,7 +322,6 @@ Smaller points, with no decision needed yet:
 - The package names, and the registries, are proposals.
 - Robinauts' docs name `open-shipyard/neorc`. The repositories read here are under `the-guish`.
 - A desktop that signs in through a company's provider is not specified.
-- A third application for the rail is not named.
 - Three limits of today's sign-in stay: a token has all of its person's roles; nobody is
   signed out at the provider; sign-in has no rate limit of its own.
 
