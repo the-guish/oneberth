@@ -18,7 +18,7 @@
 | part | what this version builds | spec |
 |---|---|---|
 | identity | users, sessions, tokens and roles; the memory, PostgreSQL and SQLite stores; sign-in through providers and local sign-in; device pairing; the admin scripts | [identity.md](../specs/identity.md) |
-| composition | the contract, `compose_app`, the front listener and the worker listener | [composition.md](../specs/composition.md) |
+| composition | the shape of a component, `compose_app`, the front listener and the worker listener | [composition.md](../specs/composition.md) |
 | the shell | the rail, the session, the sign-in page, the account pages | [shell.md](../specs/shell.md) |
 | neorc | the manager as a component; the role table as data; the interface as a package; a SQLite store | [composition.md](../specs/composition.md), [shell.md](../specs/shell.md) |
 | Robinauts | the backend as a component; a permission on each route; neorc composed into the backend; neorc's components in the interface; a SQLite store | [neorc-in-robinauts.md](../specs/neorc-in-robinauts.md), "Composed" |
@@ -63,16 +63,15 @@ Each step leaves both applications working, with their tests passing.
 
 - In oneberth.
 
-### 3. The contract and `compose_app`
+### 3. `compose_app`
 
-- In oneberth. The step includes the `/auth` routes, the checks on a request, the security
-  headers, the OpenAPI documents and the server.
-- The contract is written from the routes both applications have today: 680 lines in neorc
-  and about 1,700 in Robinauts. [composition.md](../specs/composition.md), "What the contract
-  covers", lists the needs found in them.
-- neorc's routes are thin by rule: each parses a request and calls one method.
-- This is the largest part of oneberth. A softer rule is the fallback: oneberth composes,
-  and an application still declares its routes on FastAPI.
+- In oneberth. The step includes the shape of a component, the `/auth` routes, who is
+  asking, the check of a route's permission, the checks on a request, the security headers,
+  the OpenAPI documents and the server.
+- The routes stay on FastAPI in each application: 680 lines in neorc and about 1,700 in
+  Robinauts.
+- neorc's routes each declare a permission today, with a dependency in
+  `manager/_access.py`. The step starts from that dependency.
 
 ### 4. neorc on oneberth
 

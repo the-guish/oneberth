@@ -17,7 +17,7 @@ The pattern holds in four shapes:
 |---|---|
 | [core.md](core.md) | goals, what each repository ships, the dependencies, the shapes in one table |
 | [identity.md](identity.md) | sign-in, users, sessions, tokens, roles and permissions |
-| [composition.md](composition.md) | components, the contract, how oneberth builds the web application |
+| [composition.md](composition.md) | components, how oneberth builds the web application |
 | [shapes.md](shapes.md) | the cluster, the two desktop shapes, the launcher, the window, untrusted workers |
 | [shell.md](shell.md) | the interface: the rail of applications, the account pages, the node packages |
 | [neorc-in-robinauts.md](neorc-in-robinauts.md) | how Robinauts serves neorc: composed or forwarded, credentials, versions |

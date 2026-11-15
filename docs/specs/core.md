@@ -20,8 +20,9 @@ components of one or more applications ([composition.md](composition.md)).
    each request. The desktop signs its one person in locally.
 4. **Dependencies point one way.** oneberth knows neither application. neorc knows oneberth.
    Robinauts knows both.
-5. **One owner of the web framework.** oneberth alone imports FastAPI. An application
-   describes its routes in oneberth's contract.
+5. **Written once.** oneberth holds what both applications need: the composing of the web
+   application, its server and the checks on a request. An application writes its own
+   routes on FastAPI.
 6. **The rules of the two projects hold.** oneberth is Apache-2.0, passes Robinauts' licence
    gate, sends nothing to a third party, and tests its logic in memory first.
 
@@ -76,7 +77,7 @@ The node packages follow the same direction. The neorc interface package names
 | the table of an application's permissions and roles | each application |
 | the checks on ownership, such as whose conversation this is | each application |
 | the web application, its server, the `/auth` routes, the checks on a request, the security headers | oneberth |
-| the routes of an application, written in oneberth's contract | each application |
+| the routes of an application, written on FastAPI | each application |
 | the admin scripts | oneberth |
 | the launcher and the window | oneberth |
 | the rail, the session in the browser, the sign-in page, the account pages | `@oneberth/ui` |
