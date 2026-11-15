@@ -187,6 +187,42 @@ def test_a_token_name_is_taken_once(
     assert "a service token called 'ci' exists" in capsys.readouterr().err
 
 
+class CheckedConnector(MemoryConnector):
+    """A deployment whose application checks the queue of a worker token."""
+
+    @asynccontextmanager
+    async def open(self, args: argparse.Namespace) -> AsyncIterator[Admin]:
+        async def declared(role: str, resource: str | None) -> str | None:
+            if resource == "closed":
+                return "queue 'closed' is not declared"
+            return None
+
+        yield StoreAdmin(
+            self.store,
+            REGISTRY,
+            clock=self.clock,
+            service_token_checks={"neorc": declared},
+        )
+
+
+def test_a_token_the_application_refuses_is_not_created(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    deployment = CheckedConnector()
+    run(deployment, "store", "init")
+    capsys.readouterr()
+
+    create = ["tokens", "create", "w1", "--role", "neorc/worker", "--resource"]
+    assert run(deployment, *create, "closed") == 1
+    assert "queue 'closed' is not declared" in capsys.readouterr().err
+    assert run(deployment, *create, "gpu") == 0
+    capsys.readouterr()
+    assert run(deployment, "tokens", "list") == 0
+    assert [line.split("\t")[:2] for line in capsys.readouterr().out.splitlines()] == [
+        ["w1", "neorc/worker on gpu"]
+    ]
+
+
 def test_clearing_sessions_signs_everyone_out(
     deployment: MemoryConnector, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -284,10 +320,14 @@ def test_the_oneberth_command_works_on_postgresql(
     assert "version 1" in capsys.readouterr().out
 
     monkeypatch.setenv("ONEBERTH_DATABASE_URL", pg_url)
-    main(["tokens", "create", "ops", "--role", "oneberth/admin"])
-    assert capsys.readouterr().out.startswith("ob_svc_")
+    # oneberth's own roles are for people and for the launch secret: the
+    # command alone gives a service token none of them.
+    with pytest.raises(SystemExit) as for_people:
+        main(["tokens", "create", "ops", "--role", "oneberth/admin"])
+    assert for_people.value.code == 1
+    assert "a role for people" in capsys.readouterr().err
     main(["tokens", "list"])
-    assert capsys.readouterr().out.startswith("ops\toneberth/admin\t")
+    assert capsys.readouterr().out == ""
     main(["sessions", "clear"])
     assert capsys.readouterr().out == "ended 0 sessions\n"
     main(["devices", "list"])

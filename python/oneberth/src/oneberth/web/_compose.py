@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import getpass
 import logging
-from collections.abc import AsyncIterator, Callable, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +39,7 @@ from oneberth.identity import (
     IdentityStore,
     InvalidValueError,
     Registry,
+    ServiceTokenCheck,
     check_schema,
     system_clock,
 )
@@ -226,6 +227,9 @@ def compose_app(
         local=local,
     )
 
+    token_checks: Mapping[str, ServiceTokenCheck] = {
+        c.name: c.check_service_token for c in apps if c.check_service_token is not None
+    }
     declared: dict[str, list[_Declared]] = {}
     for component in apps:
         declared[component.name] = _declared(component, registry, problems)
@@ -240,7 +244,13 @@ def compose_app(
             else:
                 opened = store
             await check_schema(opened)
-            access = config.access(opened, registry, clock=clock, local=local)
+            access = config.access(
+                opened,
+                registry,
+                clock=clock,
+                local=local,
+                service_token_checks=token_checks,
+            )
             if local:
                 if backend.launch_secret is None:
                     raise ConfigError(["the local mode starts with a launch secret"])

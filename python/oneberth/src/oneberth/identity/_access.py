@@ -16,6 +16,7 @@ import math
 import re
 import secrets
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -53,6 +54,8 @@ from oneberth.identity._roles import (
     TOKENS_MANAGE,
     Grant,
     Registry,
+    ServiceTokenCheck,
+    app_of,
 )
 from oneberth.identity._secrets import (
     MAX_SECRET_LENGTH,
@@ -275,9 +278,17 @@ class Access:
         device_days: float = DEFAULT_DEVICE_DAYS,
         max_pending_sign_ins: int = MAX_PENDING_SIGN_INS,
         local: bool = False,
+        service_token_checks: Mapping[str, ServiceTokenCheck] | None = None,
     ) -> None:
         policy = Policy() if policy is None else policy
         policy.check(registry)
+        checks = dict(service_token_checks or {})
+        unknown = sorted(set(checks) - set(registry.apps))
+        if unknown:
+            raise InvalidValueError(
+                f"a check of service tokens names {unknown[0]!r}, which registered "
+                "no roles"
+            )
         if max_pending_sign_ins < 1:
             raise InvalidValueError("at least one sign-in must be allowed at once")
         if local and (policy.allow or policy.grants):
@@ -296,6 +307,7 @@ class Access:
         self._swept_at: datetime | None = None
         self._local = local
         self._launch: _Launch | None = None
+        self._token_checks = checks
 
     @property
     def store(self) -> IdentityStore:
@@ -826,7 +838,9 @@ class Access:
 
         ``by`` holds ``oneberth/tokens:manage``, or is the ``OPERATOR``. A
         token the launcher mints is kept in memory, and ends when the
-        application stops.
+        application stops. A token holds a role that is not for people. The
+        application of the role then checks the token with its
+        ``ServiceTokenCheck``, if it gave one.
         """
         self._managing(by)
         if not is_service_name(name):
@@ -838,8 +852,18 @@ class Access:
         self._registry.check_grant(grant)
         if role == LAUNCHER_ROLE:
             raise InvalidValueError(f"the launch secret alone holds {LAUNCHER_ROLE}")
+        if self._registry.role(role).people:
+            raise InvalidValueError(
+                f"{role!r} is a role for people: a service token holds a role for "
+                "services"
+            )
         if expires_in is not None:
             check_life(expires_in, "a service token's life")
+        check = self._token_checks.get(app_of(role))
+        if check is not None:
+            refused = await check(role, resource)
+            if refused is not None:
+                raise InvalidValueError(refused)
         now = self.now()
         if not isinstance(by, Operator) and self._is_launcher(by):
             return self._launched_token(name, grant, now, expires_in)

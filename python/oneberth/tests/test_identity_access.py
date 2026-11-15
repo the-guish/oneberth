@@ -29,6 +29,7 @@ from oneberth.identity import (
     Matcher,
     NotClaimedError,
     NotFoundError,
+    Operator,
     PairingState,
     PermissionDeniedError,
     Policy,
@@ -52,6 +53,7 @@ NEORC = RoleTable(
     roles=(
         Role("neorc/user", frozenset({"neorc/runs:start"}), people=True),
         Role("neorc/worker", frozenset({"neorc/tasks:claim"}), resource="queue"),
+        Role("neorc/ci", frozenset({"neorc/runs:start"})),
     ),
     default="neorc/user",
 )
@@ -444,15 +446,15 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
     admin = await browser(access)
     person = await browser(access, BOB)
     ci_secret, _ = await access.create_service_token(
-        "ci", "neorc/user", expires_in=timedelta(hours=1), by=OPERATOR
+        "ci", "neorc/ci", expires_in=timedelta(hours=1), by=OPERATOR
     )
 
-    _, by_admin = await access.create_service_token("cd", "neorc/user", by=admin)
+    _, by_admin = await access.create_service_token("cd", "neorc/ci", by=admin)
     _, worker = await access.create_service_token(
         "w1", "neorc/worker", resource="q", by=admin
     )
     with pytest.raises(PermissionDeniedError, match="tokens"):
-        await access.create_service_token("x", "neorc/user", by=person)
+        await access.create_service_token("x", "neorc/ci", by=person)
     with pytest.raises(PermissionDeniedError):
         await access.service_tokens(by=person)
 
@@ -472,13 +474,15 @@ async def test_a_service_token_is_minted_by_a_holder_of_tokens_manage(
     ("name", "role", "resource", "expires_in", "problem"),
     [
         ("w", "neorc/worker", None, None, "needs a queue"),
-        ("w", "neorc/user", "q", None, "every resource"),
+        ("w", "neorc/ci", "q", None, "every resource"),
         ("w", "neorc/admin", None, None, "not a registered role"),
-        ("bad name", "neorc/user", None, None, "not a service token name"),
-        ("w", "neorc/user", None, timedelta(0), "life"),
-        ("w", "neorc/user", None, timedelta(days=5 * 366 + 1), "life"),
-        ("taken", "neorc/user", None, None, "exists"),
+        ("bad name", "neorc/ci", None, None, "not a service token name"),
+        ("w", "neorc/ci", None, timedelta(0), "life"),
+        ("w", "neorc/ci", None, timedelta(days=5 * 366 + 1), "life"),
+        ("taken", "neorc/ci", None, None, "exists"),
         ("l", "oneberth/launcher", None, None, "launch secret alone"),
+        ("w", "neorc/user", None, None, "a role for people"),
+        ("w", "oneberth/admin", None, None, "a role for people"),
     ],
 )
 async def test_a_service_token_refused(
@@ -489,11 +493,95 @@ async def test_a_service_token_refused(
     expires_in: timedelta | None,
     problem: str,
 ) -> None:
-    await access.create_service_token("taken", "neorc/user", by=OPERATOR)
+    await access.create_service_token("taken", "neorc/ci", by=OPERATOR)
 
     with pytest.raises(InvalidValueError, match=problem):
         await access.create_service_token(
             name, role, resource=resource, expires_in=expires_in, by=OPERATOR
+        )
+
+
+async def queues_open(role: str, resource: str | None) -> str | None:
+    """neorc's check, as an application gives it: a worker serves an open queue."""
+    if role == "neorc/worker" and resource == "closed":
+        return "queue 'closed' is not declared"
+    return None
+
+
+@pytest.mark.parametrize("by", ["operator", "admin", "launcher"])
+async def test_the_application_checks_a_service_token_before_it_is_created(
+    store: MemoryIdentityStore, clock: ManualClock, by: str
+) -> None:
+    asked: list[tuple[str, str | None]] = []
+
+    async def check(role: str, resource: str | None) -> str | None:
+        asked.append((role, resource))
+        return await queues_open(role, resource)
+
+    access = Access(
+        store,
+        Registry([ONEBERTH_ROLES, NEORC]),
+        None if by == "launcher" else POLICY,
+        clock=clock,
+        local=by == "launcher",
+        service_token_checks={"neorc": check},
+    )
+    if by == "launcher":
+        await access.start_local(LAUNCH, name="Ada")
+        principal: Principal | Operator = await launcher(access)
+    elif by == "admin":
+        principal = await browser(access)
+    else:
+        principal = OPERATOR
+
+    with pytest.raises(InvalidValueError, match="'closed' is not declared"):
+        await access.create_service_token(
+            "w1", "neorc/worker", resource="closed", by=principal
+        )
+    await access.create_service_token("w2", "neorc/worker", resource="q", by=principal)
+    await access.create_service_token("ci", "neorc/ci", by=principal)
+
+    names = [t.name for t in await access.service_tokens(by=principal)]
+    assert names == ["ci", "w2"]
+    assert asked == [
+        ("neorc/worker", "closed"),
+        ("neorc/worker", "q"),
+        ("neorc/ci", None),
+    ]
+
+
+async def test_a_token_oneberth_refuses_never_reaches_the_application(
+    store: MemoryIdentityStore, clock: ManualClock
+) -> None:
+    asked: list[str] = []
+
+    async def check(role: str, resource: str | None) -> str | None:
+        asked.append(role)
+        return None
+
+    checked = Access(
+        store,
+        Registry([ONEBERTH_ROLES, NEORC]),
+        clock=clock,
+        service_token_checks={"neorc": check},
+    )
+    for role, resource in (("neorc/worker", None), ("neorc/user", None)):
+        with pytest.raises(InvalidValueError):
+            await checked.create_service_token(
+                "w", role, resource=resource, by=OPERATOR
+            )
+
+    assert asked == []
+
+
+def test_a_check_names_an_application_that_registered_roles(
+    store: MemoryIdentityStore,
+) -> None:
+    with pytest.raises(InvalidValueError, match="'robinauts', which registered"):
+        Access(
+            store,
+            Registry([ONEBERTH_ROLES, NEORC]),
+            service_token_checks={"robinauts": queues_open},
         )
 
 

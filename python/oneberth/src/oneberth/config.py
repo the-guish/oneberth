@@ -62,6 +62,7 @@ from oneberth.identity import (
     Matcher,
     Policy,
     Registry,
+    ServiceTokenCheck,
     is_role_name,
     system_clock,
 )
@@ -158,12 +159,15 @@ class Config:
         *,
         clock: Clock = system_clock,
         local: bool = False,
+        service_token_checks: Mapping[str, ServiceTokenCheck] | None = None,
     ) -> Access:
         """The ``Access`` this configuration describes, on ``store``.
 
-        ``local`` asks for the local mode. Raises ``ConfigError`` when a
-        ``[[grant]]`` names a role the registry does not have, or one that is
-        not for people, and when the local mode meets providers or an allow list.
+        ``local`` asks for the local mode. ``service_token_checks`` holds each
+        application's check of a service token, by the application's name.
+        Raises ``ConfigError`` when a ``[[grant]]`` names a role the registry
+        does not have, or one that is not for people, and when the local mode
+        meets providers or an allow list.
         """
         if local and self.providers:
             raise ConfigError(
@@ -178,6 +182,7 @@ class Config:
                 session_hours=self.session_hours,
                 device_days=self.device_days,
                 local=local,
+                service_token_checks=service_token_checks,
             )
         except InvalidValueError as error:
             raise ConfigError([str(error)]) from None

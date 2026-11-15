@@ -37,7 +37,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.dependencies.models import Dependant
 
 from oneberth.config import Config
-from oneberth.identity import Access, Principal, RoleTable
+from oneberth.identity import Access, Principal, RoleTable, ServiceTokenCheck
 from oneberth.web._backend import backend_of
 from oneberth.web._errors import ErrorBodyOf, default_error_body
 
@@ -85,6 +85,9 @@ class Component:
     title: str | None = None
     """The title of its OpenAPI document; its name by default."""
     version: str = "0"
+    check_service_token: ServiceTokenCheck | None = None
+    """Its own check of a service token of one of its roles, run before
+    oneberth creates the token: by an admin, by the launcher or by a script."""
 
 
 @dataclass(frozen=True, slots=True)

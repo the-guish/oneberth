@@ -32,7 +32,9 @@ It ships two packages:
 - The web part, `oneberth.web`, in the extra `oneberth[web]`. An application gives
   a `Component`: its name, its roles, a FastAPI router whose routes each declare a
   permission with `permit`, and what it starts and stops. A route declares one
-  permit, on itself or on an `include_router` call above it. `compose_app` composes components into a backend's web application. It serves
+  permit, on itself or on an `include_router` call above it. A component may also
+  check the service tokens of its roles before oneberth creates them.
+  `compose_app` composes components into a backend's web application. It serves
   the `/auth` routes, the interface under `/ui/` and `/health`, and checks who is
   asking before a handler runs. `serve` runs the result on uvicorn, with a front
   listener and a worker listener. `oneberth.web.testing` helps an application's

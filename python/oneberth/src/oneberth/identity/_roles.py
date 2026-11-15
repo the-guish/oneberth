@@ -14,7 +14,7 @@ for one. The core knows no application's roles: each application hands its
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 
 from oneberth.identity._errors import InvalidValueError
@@ -113,6 +113,14 @@ class RoleTable:
                 problems.append(f"default role {self.default!r} is not for people")
         if problems:
             raise InvalidValueError(f"role table of {self.app}: " + "; ".join(problems))
+
+
+ServiceTokenCheck = Callable[[str, str | None], Awaitable[str | None]]
+"""An application's own check of a service token of one of its roles.
+
+It takes the role and the resource, and answers why it refuses the token, or
+``None``. oneberth runs it before it creates the token, after its own checks:
+``neorc`` refuses a worker token for a queue nobody declared."""
 
 
 @dataclass(frozen=True, slots=True, order=True)

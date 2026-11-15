@@ -34,7 +34,7 @@ import asyncio
 import os
 import sys
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -51,6 +51,7 @@ from oneberth.identity import (
     NotFoundError,
     Registry,
     ServiceToken,
+    ServiceTokenCheck,
     User,
     system_clock,
 )
@@ -106,14 +107,22 @@ class StoreAdmin:
     """The admin scripts on the store directly, as the operator.
 
     ``registry`` holds the roles a service token may be given: an application
-    passes its own with oneberth's.
+    passes its own with oneberth's. ``service_token_checks`` holds each
+    application's check of a service token of its roles, by its name.
     """
 
     def __init__(
-        self, store: IdentityStore, registry: Registry, *, clock: Clock = system_clock
+        self,
+        store: IdentityStore,
+        registry: Registry,
+        *,
+        clock: Clock = system_clock,
+        service_token_checks: Mapping[str, ServiceTokenCheck] | None = None,
     ) -> None:
         self._store = store
-        self._access = Access(store, registry, clock=clock)
+        self._access = Access(
+            store, registry, clock=clock, service_token_checks=service_token_checks
+        )
 
     def now(self) -> datetime:
         return self._access.now()
@@ -201,10 +210,15 @@ class PostgresConnector:
     """The store on PostgreSQL, by ``--database-url`` or a variable."""
 
     def __init__(
-        self, registry: Registry, *, database_url_env: str = DATABASE_URL_ENV
+        self,
+        registry: Registry,
+        *,
+        database_url_env: str = DATABASE_URL_ENV,
+        service_token_checks: Mapping[str, ServiceTokenCheck] | None = None,
     ) -> None:
         self._registry = registry
         self._env = database_url_env
+        self._checks = service_token_checks
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
@@ -225,7 +239,7 @@ class PostgresConnector:
                 "the PostgreSQL store needs the postgres extra: oneberth[postgres]"
             ) from None
         async with PostgresIdentityStore(url, max_size=1) as store:
-            yield StoreAdmin(store, self._registry)
+            yield StoreAdmin(store, self._registry, service_token_checks=self._checks)
 
 
 Command = Callable[[Admin, argparse.Namespace], Awaitable[int]]

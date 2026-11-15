@@ -115,7 +115,7 @@ class Samples:
         )  # fmt: skip
         self.jobs = Component(
             "jobs", JOBS, self._jobs_router(), lifespan=self._life("jobs"),
-            health=self._jobs_health,
+            health=self._jobs_health, check_service_token=self._open_queue,
         )  # fmt: skip
         self.jobs_well = True
 
@@ -132,6 +132,11 @@ class Samples:
 
     async def _jobs_health(self) -> bool:
         return self.jobs_well
+
+    async def _open_queue(self, role: str, resource: str | None) -> str | None:
+        if resource == "closed":
+            return "queue 'closed' takes no worker"
+        return None
 
     def _notes_router(self) -> APIRouter:
         router = APIRouter()
@@ -751,6 +756,31 @@ async def test_a_delete_without_a_body_needs_no_content_type(
     token = (await client.post("/auth/tokens", json={"name": "t"})).json()
 
     assert (await client.delete(f"/auth/tokens/{token['id']}")).status_code == 204
+
+
+async def test_a_service_token_refused_by_its_application_or_its_role_is_not_created(
+    samples: Samples, memory: MemoryIdentityStore
+) -> None:
+    config = config_for("notes", public_url=PUBLIC_URL, admins=["ada"])
+    composition = compose(samples, memory, config=config)
+    async with running(composition) as client:
+        await signed_in(composition, client)
+        closed = await client.post(
+            "/auth/services",
+            json={"name": "w1", "role": "jobs/worker", "resource": "closed"},
+        )
+        person = await client.post(
+            "/auth/services", json={"name": "w2", "role": "notes/user"}
+        )
+        listed = (await client.get("/auth/services")).json()["items"]
+
+    assert (closed.status_code, closed.json()) == (
+        422,
+        {"error": "InvalidValue", "detail": "queue 'closed' takes no worker"},
+    )
+    assert (person.status_code, person.json()["error"]) == (422, "InvalidValue")
+    assert "a role for people" in person.json()["detail"]
+    assert listed == []
 
 
 # The security headers, the interface, the documents and the health.
