@@ -225,20 +225,6 @@ def test_an_untrusted_worker_mounts_nothing_else_of_the_host(
     assert described(worker("u", run)) == "accepted"
 
 
-def test_a_mount_of_a_trusted_component_is_kept_inside_no_directory() -> None:
-    run = Container(IMAGE, ["work"], mounts=[Mount("workers/t1", "/state")])
-    plan = container_plan(
-        desktop(worker("t1", run)),
-        "t1",
-        run,
-        {},
-        front_port=8420,
-        worker_port=8421,
-        user=None,
-    )
-    assert [m.within for m in plan.mounts] == [None]
-
-
 @pytest.mark.parametrize(
     ("mount", "create"),
     [
@@ -322,13 +308,7 @@ async def test_the_docker_shape_starts_in_order_and_gives_each_part_its_share() 
         (),
     )
     assert untrusted.mounts == (
-        MountPlan(
-            DATA / "workers/u1",
-            "/state",
-            False,
-            create=True,
-            within=DATA / "workers/u1",
-        ),
+        MountPlan(DATA / "workers/u1", "/state", False, create=True),
     )
     assert untrusted.environment == {
         "ENGINE": "echo",

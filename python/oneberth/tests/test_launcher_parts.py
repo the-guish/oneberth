@@ -3,8 +3,7 @@
 
 """The launcher's small parts: the port of the front listener, the browser it
 looks for, the window's command, what a backend and a worker read from their
-environment, the lock on the data directory, and the links the Docker adapter
-follows before it mounts a directory of an untrusted worker."""
+environment, and the lock on the data directory."""
 
 from __future__ import annotations
 
@@ -26,8 +25,6 @@ from oneberth.launcher import (
     window_command,
 )
 from oneberth.launcher._data import keep_front_port, kept_front_port
-from oneberth.launcher._docker import DockerCli, mount_problem
-from oneberth.launcher._shape import ContainerPlan, MountPlan
 
 
 @pytest.mark.parametrize(
@@ -184,81 +181,3 @@ def test_one_launcher_holds_a_data_directory(tmp_path: Path) -> None:
     with DataLock.claim(data):
         pass
     assert (data / "launcher.lock").read_text() == ""
-
-
-# The mounts of an untrusted worker, on the real file system.
-
-
-@pytest.fixture
-def own(tmp_path: Path) -> Path:
-    """An untrusted worker's own directory, with what an earlier run of the
-    worker left in it: a link that stays inside, and a link to the person's
-    keys."""
-    own = tmp_path / "data" / "workers" / "u1"
-    (own / "state").mkdir(parents=True)
-    (tmp_path / "home" / ".ssh").mkdir(parents=True)
-    (own / "inside").symlink_to(own / "state")
-    (own / "keys").symlink_to(tmp_path / "home" / ".ssh")
-    return own
-
-
-def test_a_mount_of_an_untrusted_worker_is_followed_through_its_links(
-    own: Path, tmp_path: Path
-) -> None:
-    keys = tmp_path / "home" / ".ssh"
-
-    def problem(source: Path, within: Path | None = own) -> str | None:
-        return mount_problem(MountPlan(source, "/x", False, True, within))
-
-    for inside in (own, own / "state", own / "inside", own / "not" / "there" / "yet"):
-        assert problem(inside) is None, inside
-    assert problem(own / "keys") == (
-        f"its mount {own / 'keys'} leads to {keys}, outside {own}"
-    )
-    assert f"leads to {keys / 'id'}, outside" in (problem(own / "keys" / "id") or "")
-    # A trusted component's mount is kept inside nothing.
-    assert problem(keys, within=None) is None
-    # A loop of links leads nowhere: it is no way out, and no crash.
-    (own / "loop").symlink_to(own / "loop")
-    assert problem(own / "loop") is None or "cannot be followed" in (
-        problem(own / "loop") or ""
-    )
-
-
-def test_a_data_directory_behind_a_link_keeps_its_workers_inside(
-    own: Path, tmp_path: Path
-) -> None:
-    # The person keeps the data directory on another disk, behind a link.
-    (tmp_path / "shortcut").symlink_to(tmp_path / "data")
-    linked = tmp_path / "shortcut" / "workers" / "u1"
-
-    def problem(source: Path) -> str | None:
-        return mount_problem(MountPlan(source, "/x", False, True, linked))
-
-    assert problem(linked / "state") is None
-    assert f"leads to {tmp_path / 'home' / '.ssh'}, outside" in (
-        problem(linked / "keys") or ""
-    )
-
-
-async def test_no_container_starts_with_a_mount_that_leads_out(
-    own: Path, tmp_path: Path
-) -> None:
-    mount = MountPlan(own / "keys" / "new", "/x", False, create=True, within=own)
-    plan = ContainerPlan(
-        name="oneberth-test-u1",
-        image="notes:1",
-        command=(),
-        environment={},
-        mounts=(mount,),
-        networks=(),
-        published=(),
-        gateway=False,
-        user=None,
-        labels={},
-    )
-
-    with pytest.raises(LauncherError, match=r"leads to .*\.ssh/new, outside .*u1"):
-        await DockerCli().start(plan, None)
-    # Nothing was created on the way out, and Docker was never asked.
-    assert not (tmp_path / "home" / ".ssh" / "new").exists()

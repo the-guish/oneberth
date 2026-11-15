@@ -61,8 +61,9 @@ class Trust(StrEnum):
     TRUSTED = "trusted"
     """It runs the project's own code."""
     UNTRUSTED = "untrusted"
-    """It runs code nobody reviewed. It runs in a container or in a VM, and
-    sees one directory of the host: its own (``worker_directory``)."""
+    """It runs code nobody reviewed. It runs in a container or in a VM. A
+    container keeps such code from damage done by accident, and is no boundary
+    against an attacker (shapes.md, "What a container is for")."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,9 +93,9 @@ class Mount:
     """A directory of the host that a container sees at ``target``.
 
     A relative ``source`` is inside the data directory, such as
-    ``workers/w1`` for the own directory of the worker ``w1``. An untrusted
-    worker mounts its own directory, or a directory inside it, and nothing
-    else.
+    ``workers/w1`` for the own directory of the worker ``w1``. The
+    description of an untrusted worker mounts that directory, or a directory
+    inside it, and no other path.
     """
 
     source: str | os.PathLike[str]
@@ -261,10 +262,14 @@ def problems_of(application: Application) -> list[str]:
 
 
 def _untrusted_problems(data: Path, worker: Worker) -> list[str]:
-    """An untrusted worker runs in a container, and mounts its own directory
-    or a directory inside it. Everything else of the host is refused: the data
-    directory with its databases and the window's profile, another worker's
-    directory, a path outside the data directory, the Docker socket."""
+    """What is wrong with the description of an untrusted worker. It runs in
+    a container, and its mounts name its own directory or a directory inside
+    it.
+
+    This reads the description as it is written, so that nobody hands
+    unreviewed code the databases or the person's keys by mistake. It follows
+    no link and hardens nothing: a container is no boundary against an
+    attacker (shapes.md, "What a container is for")."""
     if not isinstance(worker.run, Container):
         return [f"the worker {worker.name!r} is untrusted: it runs in a container"]
     own = worker_directory(data, worker.name)
@@ -287,5 +292,5 @@ def mount_source(data: Path, mount: Mount) -> Path:
 def worker_directory(data: Path, name: str) -> Path:
     """The own directory of the worker ``name``: ``workers/<name>`` in the
     data directory, as an absolute path without ``..``. It is the one
-    directory of the host an untrusted worker sees."""
+    directory of the host that the description of an untrusted worker mounts."""
     return Path(os.path.normpath(data / WORKERS_DIRECTORY / name))

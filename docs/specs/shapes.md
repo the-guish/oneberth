@@ -37,12 +37,24 @@ An untrusted worker follows these rules:
 - The egress proxy passes a call on to the model providers alone.
 - It has no route to the front listener.
 - It keeps its engines' state in a directory of its own: `workers/<name>` in the data directory.
-- That directory is all it sees of the host. It mounts the directory or a directory inside
-  it, and nothing else: not the data directory, the window's profile, another worker's
-  directory, a path outside the data directory or the Docker socket.
-- A link inside that directory that leads out of it stops the start.
+- Its description mounts that directory or a directory inside it, and no other path of the host.
 
 A token limits every worker, trusted or not. The network is the second limit.
+
+### What a container is for
+
+- A default container is a fair barrier against unreviewed or buggy code that does damage
+  by accident.
+- It is not a strong boundary against a determined attacker. It shares the host's kernel.
+- The rules above serve the first purpose. They keep a mistake small: a wrong path in a
+  description, a stray request, a key in the wrong place.
+- oneberth adds no code to hold an attacker inside a container. It reads a description as
+  it is written, and it hardens nothing: it follows no link, drops no capability and
+  filters no system call.
+- A gap that only an attacker inside the container would meet is out of scope. This section
+  answers it, and no code does.
+- Code that may be hostile needs a stronger boundary than a container, such as a VM
+  ("A worker in a VM").
 
 ## Starting a worker
 

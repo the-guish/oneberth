@@ -90,13 +90,15 @@ It ships two packages:
   alone: the front listener binds the backend's address on `app`, and
   `sandbox` has no route to the host. Both listeners are published on the
   host's loopback address. An untrusted worker runs in a container, and gets
-  its token and the worker listener's address. It mounts its own directory,
-  `workers/<name>` in the data directory, or a directory inside it: the
-  launcher refuses any other path of the host, and a link that leads out of
-  that directory. The launcher runs the `docker` command, and refuses to
-  start while Docker is not running. A stop removes the containers and the
-  networks. A start first removes what a crashed start left on the same data
-  directory.
+  its token and the worker listener's address. Its description mounts its
+  own directory, `workers/<name>` in the data directory, or a directory
+  inside it: the launcher refuses a description that names any other path.
+  A container keeps unreviewed code from damage done by accident. It is no
+  boundary against an attacker, and the launcher hardens nothing
+  ([shapes.md](docs/specs/shapes.md), "What a container is for"). The
+  launcher runs the `docker` command, and refuses to start while Docker is
+  not running. A stop removes the containers and the networks. A start first
+  removes what a crashed start left on the same data directory.
 
 ## Provenance
 

@@ -35,7 +35,6 @@ from oneberth.launcher._describe import (
     Trust,
     Worker,
     mount_source,
-    worker_directory,
 )
 from oneberth.launcher._environment import (
     DATA_DIR,
@@ -213,10 +212,6 @@ class MountPlan:
     create: bool = False
     """Whether the source is created before the start: a directory of the data
     directory, which is the component's own storage."""
-    within: Path | None = None
-    """The directory the source stays inside, once every link on its way is
-    followed: an untrusted worker's own directory. ``None`` for a component
-    that may see any directory of the host."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,10 +297,8 @@ def container_plan(
     data = application.data
     networks = networks_of(application, name)
     sources = [(mount_source(data, m), m) for m in run.mounts]
-    untrusted = name != BACKEND and _worker(application, name).trust is Trust.UNTRUSTED
-    own = worker_directory(data, name) if untrusted else None
     mounts = tuple(
-        MountPlan(source, m.target, m.read_only, source.is_relative_to(data), own)
+        MountPlan(source, m.target, m.read_only, source.is_relative_to(data))
         for source, m in sources
     )
     published: tuple[Published, ...] = ()

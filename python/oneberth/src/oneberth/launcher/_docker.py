@@ -5,9 +5,7 @@
 
 Each method translates into ``docker`` commands. Before a container is
 created, the sources of its mounts that the plan marks are created on the host:
-the logic decides, and only this adapter touches the file system. A mount the
-plan keeps inside a directory, an untrusted worker's, is first followed
-through every link: one that leads outside stops the start. A container
+the logic decides, and only this adapter touches the file system. A container
 is created with its networks, then started attached to its standard output,
 with its standard input open when it gets a secret. The secret travels on that
 standard input alone: it never appears in a command line, in an environment
@@ -32,12 +30,7 @@ from pathlib import Path
 
 from oneberth.launcher._describe import LauncherError
 from oneberth.launcher._processes import next_line
-from oneberth.launcher._shape import (
-    GATEWAY_NAME,
-    ContainerPlan,
-    MountPlan,
-    NetworkPlan,
-)
+from oneberth.launcher._shape import GATEWAY_NAME, ContainerPlan, NetworkPlan
 
 DOCKER = "docker"
 """The command the launcher runs."""
@@ -115,28 +108,6 @@ def create_arguments(plan: ContainerPlan, env_file: str, stdin: bool) -> list[st
     else:
         arguments += ["--network", "none"]
     return [*arguments, plan.image, *plan.command]
-
-
-def mount_problem(mount: MountPlan) -> str | None:
-    """Why the source of a mount does not stay inside the directory the plan
-    keeps it in, once every link on its way is followed; ``None`` when it
-    stays inside, or when the plan keeps it inside nothing.
-
-    The description is checked as text. On the file system, a link inside an
-    untrusted worker's directory may lead anywhere, and an earlier run of the
-    worker may have left one: Docker would follow it.
-    """
-    if mount.within is None:
-        return None
-    try:
-        real = mount.source.resolve()
-        inside = real.is_relative_to(mount.within.resolve())
-    except (OSError, RuntimeError) as error:
-        # Links that lead nowhere, such as a loop, before Python 3.13.
-        return f"its mount {mount.source} cannot be followed: {error}"
-    if inside:
-        return None
-    return f"its mount {mount.source} leads to {real}, outside {mount.within}"
 
 
 def env_file_text(environment: Mapping[str, str]) -> str:
@@ -240,10 +211,6 @@ class DockerCli:
         await self._ok(*options, plan.name)
 
     async def start(self, plan: ContainerPlan, stdin: str | None) -> ContainerRunning:
-        for mount in plan.mounts:
-            problem = mount_problem(mount)
-            if problem is not None:
-                raise LauncherError(f"{plan.name} could not be started: {problem}")
         for mount in plan.mounts:
             if mount.create:
                 try:
