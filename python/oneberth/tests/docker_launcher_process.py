@@ -8,7 +8,8 @@ the launcher with Docker.
 
 ``IMAGE`` holds Python, the oneberth checkout and the programs of these
 tests under ``/opt/tests``. The backend runs in it, as do a trusted worker on
-``app`` and an untrusted worker on ``sandbox``. A third worker runs as a
+``app``, which prints more than a pipe holds once it is ready, and an
+untrusted worker on ``sandbox``. A third worker runs as a
 process of the host. The window is the stand-in browser.
 """
 
@@ -57,7 +58,7 @@ def main() -> None:
             Worker(
                 "t1",
                 "notes/worker",
-                in_image("gpu", {"NOTE": "trusted"}),
+                in_image("gpu", {"NOTE": "trusted", "CHATTY": "1"}),
                 resource="gpu",
             ),
             Worker(

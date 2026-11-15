@@ -71,7 +71,9 @@ It ships two packages:
   on a profile in the data directory. Closing it stops the application: the
   workers first, the backend last. One launcher runs per data directory, and a
   second start brings the window forward. The front listener keeps its port
-  across starts. `oneberth.launcher.testing` holds stand-ins of its ports.
+  across starts. The launcher reads each part's output and logs it for as
+  long as the part runs. A line longer than its buffer comes in pieces.
+  `oneberth.launcher.testing` holds stand-ins of its ports.
 
 - The desktop with Docker. A component runs as a `Process` of the host or in a
   Docker `Container`: an image, a command, its variables and its mounts. One

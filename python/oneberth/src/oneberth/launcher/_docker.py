@@ -26,6 +26,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from oneberth.launcher._describe import LauncherError
+from oneberth.launcher._processes import next_line
 from oneberth.launcher._shape import GATEWAY_NAME, ContainerPlan, NetworkPlan
 
 DOCKER = "docker"
@@ -129,11 +130,7 @@ class ContainerRunning:
         return None
 
     async def line(self) -> str | None:
-        output = self._process.stdout
-        if output is None:
-            return None
-        line = await output.readline()
-        return line.decode(errors="replace") if line else None
+        return await next_line(self._process.stdout)
 
     async def wait(self) -> int:
         code = await self._process.wait()

@@ -156,6 +156,8 @@ async def test_the_desktop_starts_comes_forward_closes_and_starts_again(
         'worker w1 claimed 200 {"by": "w1", "queue": "gpu"}',
         'worker w2 claimed 200 {"by": "w2", "queue": "cpu"}',
     ]
+    # The launcher reads a part's output for as long as the part runs.
+    assert await probe.heard("worker w1 spoke")
     window = fields(await probe.heard("window opened"))
     assert window["origin"] == f"http://127.0.0.1:{desktop.front_port}"
     assert (window["at"], window["items"]) == ("/ui/", '{"for":"Ada"}')

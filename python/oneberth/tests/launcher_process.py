@@ -7,8 +7,9 @@
 
 It describes the backend of ``launched_backend_process.py`` and two workers of
 ``launched_worker_process.py``, then calls ``launch``, as an application's
-command does. ``ONEBERTH_TEST_FAILING_WORKER`` names a worker that ends with
-code 3 right after it says ``ready``.
+command does. ``w1`` prints more than a pipe holds once it is ready.
+``ONEBERTH_TEST_FAILING_WORKER`` names a worker that ends with code 3 right
+after it says ``ready``.
 """
 
 from __future__ import annotations
@@ -26,7 +27,8 @@ def worker(name: str, queue: str) -> Worker:
     command = [sys.executable, os.fspath(HERE / "launched_worker_process.py"), queue]
     if os.environ.get("ONEBERTH_TEST_FAILING_WORKER") == name:
         command.append("3")
-    return Worker(name, "notes/worker", Process(command), resource=queue)
+    environment = {"CHATTY": "1"} if name == "w1" else {}
+    return Worker(name, "notes/worker", Process(command, environment), resource=queue)
 
 
 def main() -> None:

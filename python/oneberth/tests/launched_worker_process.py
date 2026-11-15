@@ -7,9 +7,11 @@
 
 It reads its token from standard input and the worker listener's address from
 its environment, claims on ``QUEUE`` there and reports the answer to the test's
-probe, or prints it without one, then says ``ready``. On SIGTERM it claims
-once more, which shows the backend still serves, reports it and ends. With
-``EXIT_CODE``, it ends with that code right after ``ready``.
+probe, or prints it without one, then says ``ready``. With ``CHATTY`` set, it
+then prints more than a pipe holds, one line longer than a reader's buffer
+among them, and reports that it spoke. On SIGTERM it claims once more, which
+shows the backend still serves, reports it and ends. With ``EXIT_CODE``, it
+ends with that code right after ``ready``.
 """
 
 from __future__ import annotations
@@ -64,6 +66,12 @@ def main() -> None:
     report(f"worker {worker.name} claimed {claim(worker, token, queue)}")
     signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     say_ready()
+    if os.environ.get("CHATTY"):
+        print("x" * 70_000, flush=True)
+        for number in range(3000):
+            print(f"{number:06} " + "y" * 93)
+        sys.stdout.flush()
+        report(f"worker {worker.name} spoke")
     if len(sys.argv) > 2:
         raise SystemExit(int(sys.argv[2]))
     signal.sigwait({signal.SIGTERM})

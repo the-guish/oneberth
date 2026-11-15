@@ -223,6 +223,8 @@ class Desktop:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            # The launcher logs a worker's long line in pieces of 64 KiB.
+            limit=1 << 20,
         )
         self.started.append(process)
         self._readers.append(asyncio.create_task(self._read(process)))
@@ -376,6 +378,8 @@ async def test_the_docker_shape_runs_isolates_the_untrusted_worker_and_stops_cle
         assert window["origin"] == front
         assert (window["at"], window["items"]) == ("/ui/", '{"for":"Ada"}')
         await desktop.log.heard("items for Ada")
+        # The launcher reads a container's output for as long as it runs.
+        await desktop.log.heard("worker t1 spoke")
         async with httpx.AsyncClient(trust_env=False) as client:
             assert (await client.get(f"{front}/health")).status_code == 200
 
@@ -406,6 +410,7 @@ async def test_the_docker_shape_runs_isolates_the_untrusted_worker_and_stops_cle
         assert mounts_of(u1) == [(os.fspath(desktop.data / "workers/u1"), "/state")]
         assert environment_of(t1, desktop.image) == {
             "NOTE=trusted",
+            "CHATTY=1",
             "ONEBERTH_WORKER_NAME=t1",
             f"ONEBERTH_WORKER_URL=http://{app_ip}:{worker_port}",
             f"ONEBERTH_FRONT_URL=http://{app_ip}:{desktop.front_port}",

@@ -6,6 +6,9 @@
 Each process starts in a session of its own. A Ctrl-C in the terminal then
 reaches the launcher alone, which stops the parts in order. Once a process has
 ended, whatever it left in its session is killed.
+
+The launcher reads a part's standard output for as long as the part runs. A
+part that writes to a full pipe stops, and an access log fills one fast.
 """
 
 from __future__ import annotations
@@ -19,6 +22,23 @@ from collections.abc import Mapping
 from oneberth.launcher._describe import Application, LauncherError, Process, Run
 
 
+async def next_line(output: asyncio.StreamReader | None) -> str | None:
+    """The next line of a part's output, or ``None`` once it ends.
+
+    A line longer than the reader's buffer comes in pieces, each as long as
+    the buffer: reading goes on.
+    """
+    if output is None:
+        return None
+    try:
+        line = await output.readuntil(b"\n")
+    except asyncio.IncompleteReadError as ended:
+        line = ended.partial
+    except asyncio.LimitOverrunError as long:
+        line = await output.read(max(long.consumed, 1))
+    return line.decode(errors="replace") if line else None
+
+
 class ProcessRunning:
     """A component's process."""
 
@@ -30,11 +50,7 @@ class ProcessRunning:
         return self._process.pid
 
     async def line(self) -> str | None:
-        output = self._process.stdout
-        if output is None:
-            return None
-        line = await output.readline()
-        return line.decode(errors="replace") if line else None
+        return await next_line(self._process.stdout)
 
     async def wait(self) -> int:
         code = await self._process.wait()
