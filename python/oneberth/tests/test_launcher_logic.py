@@ -91,6 +91,8 @@ async def test_the_launcher_starts_in_the_specs_order_and_stops_the_other_way() 
         "ONEBERTH_HOST": "127.0.0.1",
         "ONEBERTH_FRONT_PORT": "8420",
         "ONEBERTH_WORKER_PORT": "8421",
+        "ONEBERTH_FRONT_BIND": "127.0.0.1",
+        "ONEBERTH_WORKER_BIND": "127.0.0.1",
     }
     assert stand_ins.api.front_url == "http://127.0.0.1:8420"
     w1 = stand_ins.runtime.processes["w1"]

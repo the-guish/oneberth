@@ -4,8 +4,10 @@
 """``launch``: what an application's command calls to start the desktop.
 
 It takes the data directory's lock, keeps the front listener's port, starts
-the application with the processes' runtime, and stops it on SIGINT, SIGTERM
-or SIGHUP, or when the window closes. A second start on the same data
+the application, and stops it on SIGINT, SIGTERM or SIGHUP, or when the window
+closes. In the Docker shape it first refuses while Docker is not running, and
+removes what a crashed start left: a backend's container left running holds
+the front listener's port. A second start on the same data
 directory sends SIGUSR1 to the first launcher, which brings its window forward.
 """
 
@@ -18,6 +20,7 @@ import os
 import signal
 import sys
 
+from oneberth.launcher._containers import DockerRuntime, clean, launcher_user
 from oneberth.launcher._core import Launcher, Outcome
 from oneberth.launcher._data import (
     AlreadyRunning,
@@ -30,8 +33,11 @@ from oneberth.launcher._data import (
     profile_path,
 )
 from oneberth.launcher._describe import Application, LauncherError, Window
+from oneberth.launcher._docker import DockerCli
 from oneberth.launcher._http import HttpBackendApi
+from oneberth.launcher._ports import Docker, Runtime
 from oneberth.launcher._processes import ProcessRuntime
+from oneberth.launcher._shape import Shape, shape_of
 from oneberth.launcher._window import BrowserWindows
 
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
@@ -48,13 +54,28 @@ class AsyncioTimer:
         await asyncio.sleep(seconds)
 
 
-def process_launcher(
-    application: Application, *, front_port: int, worker_port: int
+def desktop_launcher(
+    application: Application,
+    *,
+    front_port: int,
+    worker_port: int,
+    docker: Docker | None = None,
 ) -> Launcher:
-    """A launcher that starts every part as a process of this host."""
+    """A launcher for the application's shape: every part as a process of
+    this host, or the containers through ``docker``, the ``docker`` command
+    by default."""
+    runtime: Runtime = ProcessRuntime()
+    if shape_of(application) is Shape.DOCKER:
+        runtime = DockerRuntime(
+            docker or DockerCli(),
+            runtime,
+            front_port=front_port,
+            worker_port=worker_port,
+            user=launcher_user(),
+        )
     return Launcher(
         application,
-        runtime=ProcessRuntime(),
+        runtime=runtime,
         api=HttpBackendApi,
         windows=BrowserWindows(
             application.window or Window(), profile_path(application.data)
@@ -78,6 +99,13 @@ def launch(application: Application) -> int:
         return _bring_forward(running)
     with lock:
         try:
+            if shape_of(application) is Shape.DOCKER:
+                left = asyncio.run(clean(DockerCli(), application))
+                if left:
+                    print(
+                        f"removed what an earlier start left: {', '.join(left)}",
+                        file=sys.stderr,
+                    )
             front_port = choose_front_port(
                 kept_front_port(application.data),
                 application.front_port,
@@ -91,7 +119,7 @@ def launch(application: Application) -> int:
         worker_port = any_free_port()
         while worker_port == front_port:
             worker_port = any_free_port()
-        launcher = process_launcher(
+        launcher = desktop_launcher(
             application, front_port=front_port, worker_port=worker_port
         )
         outcome = asyncio.run(_run(launcher))

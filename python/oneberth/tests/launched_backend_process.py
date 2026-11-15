@@ -8,7 +8,7 @@
 It reads where to listen and the data directory from the launcher's variables,
 composes a sample on the SQLite store there, and serves the page of
 ``launcher_page/``. A person's read and a worker's claim report to the test's
-probe, at the port ``PROBE_PORT`` names.
+probe, at the port ``PROBE_PORT`` names, or on standard output without one.
 """
 
 from __future__ import annotations
@@ -37,6 +37,11 @@ NOTES = RoleTable(
 
 
 def report(text: str) -> None:
+    """Tell the test's probe, or print it for the launcher's log in a
+    container, which gets no probe."""
+    if "PROBE_PORT" not in os.environ:
+        print(text, flush=True)
+        return
     with socket.create_connection(("127.0.0.1", int(os.environ["PROBE_PORT"]))) as to:
         to.sendall(f"{text}\n".encode())
 
@@ -67,8 +72,8 @@ def main() -> None:
     )
     run(
         app,
-        Listen(launched.host, launched.front_port),
-        Listen(launched.host, launched.worker_port),
+        Listen(launched.front_bind, launched.front_port),
+        Listen(launched.worker_bind, launched.worker_port),
     )
 
 

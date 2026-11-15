@@ -4,11 +4,12 @@
 """The launcher's logic: the order of the starts and the stops, and what
 happens when a part ends (shapes.md, "The launcher" and "The window").
 
-It runs against the ports alone. A start goes in the spec's order: the launch
+It runs against the ports alone. A start goes in the spec's order: what the
+runtime prepares, such as the networks of the Docker shape, the launch
 secret, the backend with the secret on its standard input, its ``ready``, one
 service token per worker, each worker with its token on its standard input and
 its ``ready``, the ticket, the window. A stop goes the other way: the window,
-the workers, the backend last.
+the workers, the backend last, then what the runtime prepared.
 
 The application stops when the window closes, when a signal asks it to, or
 when a part ends that should not have. The spec does not say to start a part
@@ -33,18 +34,16 @@ from oneberth.launcher._describe import (
     Application,
     LauncherError,
     Run,
-    Trust,
 )
-from oneberth.launcher._environment import (
-    DATA_DIR,
-    LAUNCHER_PID,
-    LOOPBACK,
-    READY,
-    backend_environment,
-    worker_environment,
-)
+from oneberth.launcher._environment import DATA_DIR, LAUNCHER_PID, LOOPBACK, READY
 from oneberth.launcher._ports import ApiFactory, BackendApi, Running, Runtime, Timer
 from oneberth.launcher._ports import Windows as WindowsPort
+from oneberth.launcher._shape import (
+    backend_environment,
+    backend_run,
+    worker_environment,
+    worker_network,
+)
 
 _log = logging.getLogger("oneberth.launcher")
 
@@ -196,9 +195,9 @@ class Launcher:
         secret = self._secret()
         backend = await self._spawn(
             BACKEND,
-            application.backend.run,
+            backend_run(application),
             backend_environment(
-                application.data, self.front_port, self.worker_port, self._pid
+                application, self.front_port, self.worker_port, self._pid
             ),
             stdin=secret,
         )
@@ -212,16 +211,18 @@ class Launcher:
         }
         workers = []
         for worker in application.workers:
-            front = (
-                self._runtime.reach(worker.run, self.front_port)
-                if worker.trust is Trust.TRUSTED
-                else None
+            network = worker_network(application, worker)
+            address = (
+                LOOPBACK
+                if network is None
+                else await self._runtime.address(BACKEND, network)
             )
             environment = worker_environment(
-                application.data,
-                worker.name,
-                self._runtime.reach(worker.run, self.worker_port),
-                front,
+                application,
+                worker,
+                address,
+                self.front_port,
+                self.worker_port,
                 self._pid,
             )
             part = await self._spawn(

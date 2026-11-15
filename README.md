@@ -59,7 +59,19 @@ It ships two packages:
   second start brings the window forward. The front listener keeps its port
   across starts. `oneberth.launcher.testing` holds stand-ins of its ports.
 
-The desktop with Docker comes later.
+- The desktop with Docker. A component runs as a `Process` of the host or in a
+  Docker `Container`: an image, a command, its variables and its mounts. One
+  worker in a container puts the whole application in the Docker shape. The
+  backend then runs in its container, with the data directory mounted. The
+  launcher creates two networks: `app`, for the backend and the trusted
+  workers, and `sandbox`, which has no way out, for the backend and the
+  untrusted workers. A container on `sandbox` reaches the worker listener
+  alone. Both listeners are published on the host's loopback address. An
+  untrusted worker runs in a container, and gets its token, the worker
+  listener's address and what its description names. The launcher runs the
+  `docker` command, and refuses to start while Docker is not running. A stop
+  removes the containers and the networks. A start first removes what a
+  crashed start left on the same data directory.
 
 ## Provenance
 

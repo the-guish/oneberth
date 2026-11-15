@@ -106,15 +106,30 @@ def test_the_window_has_a_profile_of_its_own_and_no_address_bar() -> None:
     )
 
 
-def test_a_backend_reads_where_to_listen() -> None:
-    environ = {
-        "ONEBERTH_DATA_DIR": "/data",
-        "ONEBERTH_HOST": "127.0.0.1",
-        "ONEBERTH_FRONT_PORT": "8420",
-        "ONEBERTH_WORKER_PORT": "8421",
-    }
-    assert LaunchedBackend.from_environ(environ) == LaunchedBackend(
-        Path("/data"), "127.0.0.1", 8420, 8421
+LAUNCHED = {
+    "ONEBERTH_DATA_DIR": "/data",
+    "ONEBERTH_HOST": "127.0.0.1",
+    "ONEBERTH_FRONT_PORT": "8420",
+    "ONEBERTH_WORKER_PORT": "8421",
+}
+
+
+@pytest.mark.parametrize(
+    ("binds", "front_bind", "worker_bind"),
+    [
+        ({}, "127.0.0.1", "127.0.0.1"),
+        (
+            {"ONEBERTH_FRONT_BIND": "front", "ONEBERTH_WORKER_BIND": "0.0.0.0"},
+            "front",
+            "0.0.0.0",
+        ),
+    ],
+)
+def test_a_backend_reads_where_to_listen(
+    binds: dict[str, str], front_bind: str, worker_bind: str
+) -> None:
+    assert LaunchedBackend.from_environ({**LAUNCHED, **binds}) == LaunchedBackend(
+        Path("/data"), "127.0.0.1", 8420, 8421, front_bind, worker_bind
     )
     assert LaunchedBackend.from_environ({}) is None
 

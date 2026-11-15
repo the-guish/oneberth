@@ -15,6 +15,7 @@ from collections.abc import Callable, Mapping
 from typing import Protocol
 
 from oneberth.launcher._describe import Application, Process, Run
+from oneberth.launcher._shape import ContainerPlan, NetworkPlan
 
 
 class Running(Protocol):
@@ -53,8 +54,10 @@ class Runtime(Protocol):
         """Undo ``prepare`` once every component has stopped."""
         ...
 
-    def reach(self, run: Run, port: int) -> str:
-        """The address a component started with ``run`` uses for a listener's port."""
+    async def address(self, name: str, network: str) -> str:
+        """The address of the started component ``name`` on ``network``.
+
+        A worker in a container reaches the backend there."""
         ...
 
     async def start(
@@ -66,6 +69,47 @@ class Runtime(Protocol):
     ) -> Running:
         """Start ``run``. ``stdin`` is written on its standard input, which is
         then closed. Raises ``LauncherError`` when it cannot be started."""
+        ...
+
+
+class Docker(Protocol):
+    """The Docker daemon, as the launcher uses it. Each method runs one
+    ``docker`` command or a few, and decides nothing."""
+
+    async def running(self) -> bool:
+        """Whether the daemon answers."""
+        ...
+
+    async def find_containers(self, labels: Mapping[str, str]) -> list[str]:
+        """The names of the containers that have every label, running or not."""
+        ...
+
+    async def find_networks(self, labels: Mapping[str, str]) -> list[str]:
+        """The names of the networks that have every label."""
+        ...
+
+    async def remove_containers(self, names: list[str]) -> None:
+        """Stop and remove these containers now."""
+        ...
+
+    async def remove_networks(self, names: list[str]) -> None:
+        """Remove these networks, once no container is on them."""
+        ...
+
+    async def create_network(self, plan: NetworkPlan) -> None:
+        """Create a network. Raises ``LauncherError`` when it cannot."""
+        ...
+
+    async def start(self, plan: ContainerPlan, stdin: str | None) -> Running:
+        """Create and start a container, attached to its standard output.
+
+        ``stdin`` is written on its standard input, which is then closed. The
+        container is removed once it ends. Raises ``LauncherError`` when it
+        cannot be started."""
+        ...
+
+    async def address(self, container: str, network: str) -> str:
+        """The address of a running container on a network."""
         ...
 
 

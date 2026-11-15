@@ -17,7 +17,6 @@ import signal
 from collections.abc import Mapping
 
 from oneberth.launcher._describe import Application, LauncherError, Process, Run
-from oneberth.launcher._environment import LOOPBACK
 
 
 class ProcessRunning:
@@ -65,8 +64,8 @@ class ProcessRuntime:
     async def release(self) -> None:
         return None
 
-    def reach(self, run: Run, port: int) -> str:
-        return f"http://{LOOPBACK}:{port}"
+    async def address(self, name: str, network: str) -> str:
+        raise LauncherError(f"no network joins the processes: {network}")
 
     async def start(
         self,

@@ -4,18 +4,20 @@
 """What an application gives the launcher: its backend, its workers, its data
 directory and its window (shapes.md, "The launcher").
 
-A component says how it runs with a ``Run``. ``Process`` is the one kind of
-this version. The desktop with Docker adds a container to ``Run``, and the
-runtime that starts it.
+A component says how it runs with a ``Run``: a ``Process`` of the host, or a
+``Container`` of Docker. One worker in a container puts the whole application
+in the Docker shape, and the backend then runs in its container too
+(shapes.md, "The desktop, with Docker").
 """
 
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from oneberth.identity import is_service_name
 
@@ -81,15 +83,83 @@ class Process:
             raise LauncherError("a process needs a command")
 
 
-Run = Process
-"""How a component runs. The desktop with Docker adds a container."""
+@dataclass(frozen=True, slots=True)
+class Mount:
+    """A directory of the host that a container sees at ``target``.
+
+    A relative ``source`` is inside the data directory, such as
+    ``workers/w1`` for a worker's own storage.
+    """
+
+    source: str | os.PathLike[str]
+    target: str
+    read_only: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Container:
+    """A component that runs in a Docker container, from ``image``.
+
+    ``command`` replaces the image's command when given. The container gets
+    ``environment``, then the variables the launcher sets, and nothing of the
+    launcher's own environment. It sees the directories ``mounts`` names, and
+    no other directory of the host. It runs as ``user``, the launcher's user
+    and group by default, so that the files it writes stay the person's.
+    """
+
+    image: str
+    command: Sequence[str] = ()
+    environment: Mapping[str, str] = field(default_factory=dict)
+    mounts: Sequence[Mount] = ()
+    user: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "command", tuple(self.command))
+        object.__setattr__(self, "environment", dict(self.environment))
+        object.__setattr__(self, "mounts", tuple(self.mounts))
+        problems = _container_problems(self)
+        if problems:
+            raise LauncherError("; ".join(problems))
+
+
+def _container_problems(container: Container) -> list[str]:
+    problems = []
+    if not container.image or container.image.startswith("-"):
+        problems.append(f"a container needs an image: {container.image!r}")
+    for name, value in container.environment.items():
+        if not _VARIABLE.fullmatch(name):
+            problems.append(f"no variable is named {name!r}")
+        if "\n" in value or "\r" in value or "\0" in value:
+            problems.append(f"the variable {name} holds a line break")
+    targets: set[str] = set()
+    for mount in container.mounts:
+        target = PurePosixPath(mount.target)
+        if not target.is_absolute() or ".." in target.parts or "," in mount.target:
+            problems.append(f"a mount's target is an absolute path: {mount.target!r}")
+        elif os.fspath(target) in targets:
+            problems.append(f"two mounts have the target {mount.target!r}")
+        targets.add(os.fspath(target))
+        if "," in os.fspath(mount.source):
+            problems.append(f"a mount's source has no comma: {mount.source!r}")
+    return problems
+
+
+_VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+Run = Process | Container
+"""How a component runs: a process of the host, or a Docker container."""
 
 
 @dataclass(frozen=True, slots=True)
 class Backend:
-    """The backend: one process that serves both listeners and says ``ready``."""
+    """The backend: it serves both listeners and says ``ready``.
+
+    ``container`` is how it runs in the Docker shape, when ``run`` is a
+    process. The launcher picks the shape from the workers.
+    """
 
     run: Run
+    container: Container | None = None
     start_seconds: float = BACKEND_START_SECONDS
     stop_seconds: float = BACKEND_STOP_SECONDS
 
@@ -170,11 +240,34 @@ def problems_of(application: Application) -> list[str]:
         elif worker.name in seen:
             problems.append(f"two workers are named {worker.name!r}")
         seen.add(worker.name)
-        if worker.trust is Trust.UNTRUSTED and isinstance(worker.run, Process):
+        if worker.trust is Trust.UNTRUSTED:
+            problems.extend(_untrusted_problems(application.data, worker))
+    if any(isinstance(w.run, Container) for w in application.workers):
+        backend = application.backend
+        if not isinstance(backend.run, Container) and backend.container is None:
             problems.append(
-                f"the worker {worker.name!r} is untrusted: it runs in a container"
+                "a worker runs in a container: the backend needs a container too"
             )
     port = application.front_port
     if port is not None and not 0 < port < 65536:
         problems.append(f"no port is numbered {port}")
     return problems
+
+
+def _untrusted_problems(data: Path, worker: Worker) -> list[str]:
+    if not isinstance(worker.run, Container):
+        return [f"the worker {worker.name!r} is untrusted: it runs in a container"]
+    problems = []
+    for mount in worker.run.mounts:
+        source = mount_source(data, mount)
+        if source == data or data.is_relative_to(source):
+            problems.append(
+                f"the worker {worker.name!r} is untrusted: it may not mount"
+                f" the data directory, {source}"
+            )
+    return problems
+
+
+def mount_source(data: Path, mount: Mount) -> Path:
+    """The host directory of ``mount``, as an absolute path without ``..``."""
+    return Path(os.path.normpath(data / mount.source))

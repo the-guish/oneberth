@@ -7,9 +7,9 @@
 
 It reads its token from standard input and the worker listener's address from
 its environment, claims on ``QUEUE`` there and reports the answer to the test's
-probe, then says ``ready``. On SIGTERM it claims once more, which shows the
-backend still serves, reports it and ends. With ``EXIT_CODE``, it ends with
-that code right after ``ready``.
+probe, or prints it without one, then says ``ready``. On SIGTERM it claims
+once more, which shows the backend still serves, reports it and ends. With
+``EXIT_CODE``, it ends with that code right after ``ready``.
 """
 
 from __future__ import annotations
@@ -28,6 +28,11 @@ _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def report(text: str) -> None:
+    """Tell the test's probe, or print it for the launcher's log in a
+    container, which gets no probe."""
+    if "PROBE_PORT" not in os.environ:
+        print(text, flush=True)
+        return
     with socket.create_connection(("127.0.0.1", int(os.environ["PROBE_PORT"]))) as to:
         to.sendall(f"{text}\n".encode())
 

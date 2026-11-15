@@ -22,11 +22,16 @@ DATA_DIR = "ONEBERTH_DATA_DIR"
 LAUNCHER_PID = "ONEBERTH_LAUNCHER_PID"
 """The launcher's process id. Every process the launcher starts has it."""
 HOST = "ONEBERTH_HOST"
-"""The backend's: the address both listeners bind."""
+"""The backend's: the loopback address where the window reaches the front
+listener. Its ``public_url`` names it."""
 FRONT_PORT = "ONEBERTH_FRONT_PORT"
 """The backend's: the port of the front listener."""
 WORKER_PORT = "ONEBERTH_WORKER_PORT"
 """The backend's: the port of the worker listener."""
+FRONT_BIND = "ONEBERTH_FRONT_BIND"
+"""The backend's: the address its front listener binds."""
+WORKER_BIND = "ONEBERTH_WORKER_BIND"
+"""The backend's: the address its worker listener binds."""
 WORKER_NAME = "ONEBERTH_WORKER_NAME"
 """A worker's: its name, which also names its token."""
 WORKER_URL = "ONEBERTH_WORKER_URL"
@@ -40,40 +45,7 @@ READY = "ready"
 """The line a backend or a worker prints on standard output once it serves."""
 
 LOOPBACK = "127.0.0.1"
-"""Where the front listener and the worker listener accept connections."""
-
-
-def backend_environment(
-    data_dir: Path, front_port: int, worker_port: int, launcher_pid: int
-) -> dict[str, str]:
-    """What the launcher sets in the backend's environment."""
-    return {
-        DATA_DIR: os.fspath(data_dir),
-        LAUNCHER_PID: str(launcher_pid),
-        HOST: LOOPBACK,
-        FRONT_PORT: str(front_port),
-        WORKER_PORT: str(worker_port),
-    }
-
-
-def worker_environment(
-    data_dir: Path,
-    name: str,
-    worker_url: str,
-    front_url: str | None,
-    launcher_pid: int,
-) -> dict[str, str]:
-    """What the launcher sets in a worker's environment. An untrusted worker
-    gets no ``front_url``."""
-    environment = {
-        DATA_DIR: os.fspath(data_dir),
-        LAUNCHER_PID: str(launcher_pid),
-        WORKER_NAME: name,
-        WORKER_URL: worker_url,
-    }
-    if front_url is not None:
-        environment[FRONT_URL] = front_url
-    return environment
+"""The host's address of the front listener and the worker listener."""
 
 
 def _environ(environ: Mapping[str, str] | None) -> Mapping[str, str]:
@@ -82,12 +54,19 @@ def _environ(environ: Mapping[str, str] | None) -> Mapping[str, str]:
 
 @dataclass(frozen=True, slots=True)
 class LaunchedBackend:
-    """What a backend the launcher started reads from its environment."""
+    """What a backend the launcher started reads from its environment.
+
+    ``host`` and ``front_port`` make its ``public_url``. Its front listener
+    binds ``front_bind`` and its worker listener binds ``worker_bind``: the
+    loopback address as a process, other addresses in a container.
+    """
 
     data_dir: Path
     host: str
     front_port: int
     worker_port: int
+    front_bind: str
+    worker_bind: str
 
     @classmethod
     def from_environ(
@@ -97,11 +76,14 @@ class LaunchedBackend:
         found = _environ(environ)
         if FRONT_PORT not in found:
             return None
+        host = found[HOST]
         return cls(
             Path(found[DATA_DIR]),
-            found[HOST],
+            host,
             int(found[FRONT_PORT]),
             int(found[WORKER_PORT]),
+            found.get(FRONT_BIND, host),
+            found.get(WORKER_BIND, host),
         )
 
 
