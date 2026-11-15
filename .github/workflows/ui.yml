@@ -24,13 +24,13 @@ jobs:
           cache: npm
           cache-dependency-path: ts/oneberth-ui/package-lock.json
       - run: npm ci
-      # Advisories for everything installed; signatures and provenance for
-      # what a host bundles. The registry does not serve attestations for
-      # every dev-only package, and a 404 there is not a reason to fail.
-      - name: Known advisories, and registry signatures and provenance
+      # Advisories and registry signatures for everything installed. The
+      # package ships no dependency of its own, so there is nothing to narrow
+      # the check to: with --omit=dev npm finds nothing to audit and fails.
+      - name: Known advisories, and registry signatures
         run: |
           npm audit
-          npm audit signatures --omit=dev
+          npm audit signatures
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
