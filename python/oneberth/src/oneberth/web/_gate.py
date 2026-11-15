@@ -32,7 +32,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from oneberth.identity import IdentityError
 from oneberth.web._backend import PRINCIPAL_KEY, Backend
-from oneberth.web._checks import bearer_of, check_request
+from oneberth.web._checks import bearer_of, check_request, is_local_host
 from oneberth.web._errors import Refusal, identity_refusal
 
 log = logging.getLogger("oneberth.web")
@@ -153,10 +153,13 @@ class Gate:
         *,
         backend: Backend,
         rules: Sequence[Rule],
+        local_host: bool = False,
     ) -> None:
         self.app = app
         self.backend = backend
         self.rules = rules
+        self.local_host = local_host
+        """Whether the ``Host`` must be ``localhost`` or an IP address."""
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -178,6 +181,12 @@ class Gate:
     async def _check(self, scope: Scope, connection: HTTPConnection) -> None:
         backend = self.backend
         headers = connection.headers
+        if self.local_host and not is_local_host(headers.getlist("host")):
+            raise Refusal(
+                403,
+                "Forbidden",
+                "the local mode answers a Host of localhost or an IP address",
+            )
         length = headers.get("content-length")
         refusal = check_request(
             scope["method"],

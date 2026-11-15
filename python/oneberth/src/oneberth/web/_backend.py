@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlencode
 
 from starlette.requests import HTTPConnection
 
@@ -34,6 +35,10 @@ class Backend:
     cookies: Cookies
     registry: Registry
     max_body: int
+    local: bool = False
+    """Whether this is the local mode: one user, signed in with a ticket."""
+    launch_secret: str | None = None
+    """The launch secret of this start, in the local mode. In memory alone."""
     access_or_none: Access | None = None
     providers: Providers | None = None
     health: dict[str, Callable[[], Any]] = field(default_factory=dict)
@@ -68,6 +73,10 @@ class Backend:
         principal = await self.principal_of(connection)
         connection.scope[PRINCIPAL_KEY] = principal
         return principal
+
+    def ticket_url(self, ticket: str) -> str:
+        """Where a ticket signs the local user in: what the window opens."""
+        return f"{self.public_url}/auth/local?{urlencode({'ticket': ticket})}"
 
 
 def backend_of(connection: HTTPConnection) -> Backend:

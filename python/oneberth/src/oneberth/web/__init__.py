@@ -7,10 +7,18 @@ An application builds a ``Component`` around a FastAPI router whose routes
 each declare a permission with ``permit``, and take the principal with
 ``Asking``, ``Browsing``, ``FreshBrowsing`` or ``Device``. A backend composes
 components with ``compose_app`` and serves the result with ``serve`` or
-``run``. ``oneberth.web.testing`` helps an application's tests do the same.
+``run``. In the local mode, ``run`` takes the launch secret from standard
+input, or makes one and prints the address that signs the person in.
+``oneberth.web.testing`` helps an application's tests do the same.
 """
 
-from oneberth.web._checks import Cookies, bearer_of, check_request, safe_return_to
+from oneberth.web._checks import (
+    Cookies,
+    bearer_of,
+    check_request,
+    is_local_host,
+    safe_return_to,
+)
 from oneberth.web._component import (
     Asking,
     Browsing,
@@ -39,7 +47,15 @@ from oneberth.web._compose import (
 from oneberth.web._errors import ErrorBody, Refusal
 from oneberth.web._gate import CONTENT_SECURITY_POLICY, SECURITY_HEADERS
 from oneberth.web._qr import qr_svg
-from oneberth.web._server import READY, Listen, ServerError, Where, run, serve
+from oneberth.web._server import (
+    READY,
+    Listen,
+    ServerError,
+    Where,
+    read_launch_secret,
+    run,
+    serve,
+)
 
 __all__ = [
     "CONTENT_SECURITY_POLICY",
@@ -72,8 +88,10 @@ __all__ = [
     "check_request",
     "compose_app",
     "device",
+    "is_local_host",
     "permit",
     "qr_svg",
+    "read_launch_secret",
     "run",
     "safe_return_to",
     "serve",

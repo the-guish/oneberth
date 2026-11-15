@@ -6,6 +6,8 @@
     GET    /auth/session                    who is asking, their roles, the providers
     GET    /auth/login/{provider}           a sign-in begun: a redirect to the provider
     GET    /auth/callback/{provider}        a sign-in finished: the session cookie
+    POST   /auth/tickets                    a ticket, for the launch secret alone
+    GET    /auth/local?ticket=…             a ticket swapped for the session cookie
     POST   /auth/logout                     the session, or the device that asks, ends
     GET    /auth/tokens, POST, DELETE /{id} the person's tokens
     POST   /auth/pairings                   a pairing and its QR code
@@ -37,6 +39,7 @@ from pydantic import BaseModel, Field
 
 from oneberth.identity import (
     PENDING_SIGN_IN_LIFE,
+    TICKETS_CREATE,
     TOKENS_MANAGE,
     AuthenticationError,
     DeviceDescription,
@@ -49,13 +52,14 @@ from oneberth.identity import (
 )
 from oneberth.web._backend import Backend, backend_of
 from oneberth.web._checks import Cookies, safe_return_to
-from oneberth.web._component import Asking, Browsing, FreshBrowsing
-from oneberth.web._errors import identity_refusal
+from oneberth.web._component import Asking, Browsing, FreshBrowsing, permit
+from oneberth.web._errors import Refusal, identity_refusal
 from oneberth.web._qr import qr_svg
 
 log = logging.getLogger("oneberth.web")
 
 SIGN_IN_PAGE = "/ui/#/sign-in"
+INTERFACE = "/ui/"
 LINK_VERSION = 1
 
 
@@ -94,6 +98,14 @@ class SessionView(BaseModel):
     roles: list[str]
     pairing: PairingStateView | None = None
     """For a phone whose claim waits for the browser's approval."""
+
+
+class TicketView(BaseModel):
+    ticket: str
+    """Works once, within a minute."""
+    url: str
+    """Where the window opens: ``/auth/local`` with the ticket."""
+    expires_at: datetime
 
 
 class TokenRequest(BaseModel):
@@ -270,12 +282,17 @@ def link_url(public_url: str, code: str) -> str:
 
 
 def set_cookie(
-    cookies: Cookies, response: Response, name: str, value: str, life: timedelta
+    cookies: Cookies,
+    response: Response,
+    name: str,
+    value: str,
+    life: timedelta | None,
 ) -> None:
+    """``life`` ``None`` makes a cookie of the browser's session."""
     response.set_cookie(
         name,
         value,
-        max_age=max(1, int(life.total_seconds())),
+        max_age=None if life is None else max(1, int(life.total_seconds())),
         path="/",
         secure=cookies.secure,
         httponly=True,
@@ -300,7 +317,7 @@ async def session(request: Request) -> SessionView:
     backend = backend_of(request)
     providers = [] if backend.providers is None else backend.providers.clients.values()
     answer = SessionView(
-        mode="providers",
+        mode="local" if backend.local else "providers",
         providers=[
             ProviderView(id=c.config.id, title=c.config.title) for c in providers
         ],
@@ -408,6 +425,38 @@ async def callback(
         backend.cookies.session,
         signed_in.secret,
         session_.expires_at - session_.created_at,
+    )
+    return response
+
+
+@router.post("/tickets", status_code=201, dependencies=[permit(TICKETS_CREATE)])
+async def create_ticket(request: Request, principal: Asking) -> TicketView:
+    backend = backend_of(request)
+    ticket, expires_at = await backend.access.create_ticket(principal)
+    return TicketView(
+        ticket=ticket, url=backend.ticket_url(ticket), expires_at=expires_at
+    )
+
+
+@router.get("/local", include_in_schema=False)
+async def local(request: Request, ticket: str | None = None) -> Response:
+    """The window's first page: the ticket swapped for the session cookie, and
+    the interface. A ticket refused lands on the interface too, which says to
+    start again."""
+    backend = backend_of(request)
+    if not backend.local:
+        raise Refusal(404, "NotFound", "the local mode is off")
+    response = RedirectResponse(f"{backend.public_url}{INTERFACE}", status_code=303)
+    try:
+        signed_in = await backend.access.take_ticket(ticket or "")
+    except AuthenticationError as refused:
+        log.warning("a ticket was refused: %s", refused)
+        return response
+    log.info("the local user %s signed in with a ticket", signed_in.user.id)
+    # A cookie of the browser's session: the local session lasts until the
+    # application stops, and the window closing stops it.
+    set_cookie(
+        backend.cookies, response, backend.cookies.session, signed_in.secret, None
     )
     return response
 

@@ -10,6 +10,7 @@ so a refused write never reaches a handler and its body is never read.
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -79,6 +80,33 @@ def check_request(
             f"{origin or 'an unnamed origin'}",
         )
     return None
+
+
+def is_local_host(values: list[str]) -> bool:
+    """Whether the ``Host`` headers of a request name ``localhost`` or an IP
+    address, with a port or without: what the local mode answers.
+
+    DNS rebinding needs a name: a page on the internet points its own name at
+    this machine, and the browser sends that name as ``Host``. An IP address
+    cannot be rebound.
+    """
+    if len(values) != 1:
+        return False
+    host = values[0].lower()
+    if not host or any(c in host for c in "/?#@\\ ") or not host.isprintable():
+        return False
+    try:
+        parts = urlsplit(f"//{host}")
+        _ = parts.port  # a port that is not a number raises
+    except ValueError:
+        return False
+    if parts.hostname == "localhost":
+        return True
+    try:
+        ipaddress.ip_address(parts.hostname or "")
+    except ValueError:
+        return False
+    return True
 
 
 @dataclass(frozen=True, slots=True)

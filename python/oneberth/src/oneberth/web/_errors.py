@@ -43,9 +43,12 @@ class ErrorBody(BaseModel):
     detail: str
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True, eq=False)
 class Refusal(Exception):
-    """A request refused before it reaches a handler, or by oneberth's routes."""
+    """A request refused before it reaches a handler, or by oneberth's routes.
+
+    Not frozen: Starlette clears the traceback of an exception a route raises.
+    """
 
     status: int
     error: str

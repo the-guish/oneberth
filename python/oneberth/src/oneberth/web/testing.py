@@ -7,8 +7,11 @@
   ``test`` may sign in.
 - ``running`` starts a composition and gives an ``httpx`` client on it, in
   process, which sends ``Origin`` as a browser does.
-- ``signed_in`` signs a person in and puts the session cookie on a client.
+- ``signed_in`` signs a person in and puts the session cookie on a client. In
+  the local mode, it signs the local user in with a ticket, as the window does.
   ``service_token`` makes a service token.
+- ``launcher`` gives the header that sends the launch secret of a composition
+  in the local mode, as the launcher sends it.
 - ``StandInProvider`` is an OpenID Connect provider for a sign-in from start to
   end: in process through ``transport()``, or on a port for a browser.
 - ``read_qr`` reads the text of the QR code the pairing page shows, as a phone
@@ -39,11 +42,13 @@ from oneberth.config import AppConfig, Config, ProviderConfig
 from oneberth.identity import (
     OPERATOR,
     Clock,
+    CredentialKind,
     GrantEntry,
     Identity,
     Match,
     Matcher,
     Policy,
+    new_secret,
     system_clock,
 )
 from oneberth.web._compose import Composition
@@ -89,8 +94,11 @@ async def running(composition: Composition) -> AsyncIterator[httpx.AsyncClient]:
     """``composition`` started, and a client on its front listener.
 
     The client sends ``Origin`` with every request, as a browser does with a
-    write, and keeps the cookies the backend sets.
+    write, and keeps the cookies the backend sets. A composition in the local
+    mode gets a launch secret of its own, unless it has one.
     """
+    if composition.local and composition.launch_secret is None:
+        composition.launch_secret = new_secret(CredentialKind.LAUNCH)
     async with (
         composition.lifespan(),
         client_of(composition) as client,
@@ -113,10 +121,38 @@ async def signed_in(
     client: httpx.AsyncClient,
     identity: Identity = ADA,
 ) -> str:
-    """Sign ``identity`` in and give ``client`` the session cookie; the secret."""
+    """Sign ``identity`` in and give ``client`` the session cookie; the secret.
+
+    In the local mode, the local user signs in instead: the launch secret asks
+    for a ticket, and ``client`` opens ``/auth/local`` with it, as the window does.
+    """
+    if composition.local:
+        return await _signed_in_locally(composition, client)
     done = await composition.access.sign_in(identity)
     client.cookies.set(composition.cookies.session, done.secret)
     return done.secret
+
+
+async def _signed_in_locally(
+    composition: Composition, client: httpx.AsyncClient
+) -> str:
+    async with client_of(composition) as launcher_client:
+        asked = await launcher_client.post(
+            "/auth/tickets", json={}, headers=launcher(composition)
+        )
+    assert asked.status_code == 201, asked.text
+    opened = await client.get(asked.json()["url"])
+    assert opened.status_code == 303, opened.text
+    secret = opened.cookies.get(composition.cookies.session)
+    assert secret, "the ticket was refused"
+    return secret
+
+
+def launcher(composition: Composition) -> dict[str, str]:
+    """The header that sends the launch secret of a started composition."""
+    secret = composition.launch_secret
+    assert secret is not None, "the composition is not in the local mode"
+    return bearer(secret)
 
 
 async def service_token(

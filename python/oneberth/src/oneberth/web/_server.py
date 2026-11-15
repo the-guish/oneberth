@@ -8,6 +8,10 @@ listener when one is asked for, and then prints ``ready`` on standard output,
 the line a supervisor waits for (shapes.md, "Starting a worker"). SIGINT and
 SIGTERM stop it: the worker listener first, then the front listener, whose
 lifespan stops the components in reverse.
+
+A backend in the local mode starts with a launch secret. ``run`` reads it from
+standard input, where the launcher writes it. A start by hand has none there:
+``run`` then makes one, and prints the address that signs the person in.
 """
 
 from __future__ import annotations
@@ -19,9 +23,11 @@ import socket
 import sys
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
+from typing import TextIO
 
 import uvicorn
 
+from oneberth.identity import CredentialKind, is_launch_secret, new_secret
 from oneberth.web._compose import Composition
 
 READY = "ready"
@@ -51,6 +57,27 @@ def say_ready() -> None:
     print(READY, flush=True)
 
 
+def say_where(url: str) -> None:
+    """Print the address that signs the person in, for a start by hand."""
+    print(f"open {url}", flush=True)
+
+
+def read_launch_secret(stream: TextIO | None) -> str | None:
+    """The launch secret the launcher wrote on ``stream``: its first line.
+
+    ``None`` for a start by hand: no stream, a terminal, or an empty first
+    line. Raises ``ServerError`` for a line that is not a launch secret.
+    """
+    if stream is None or stream.closed or stream.isatty():
+        return None
+    line = stream.readline().strip()
+    if not line:
+        return None
+    if not is_launch_secret(line):
+        raise ServerError("standard input holds no launch secret")
+    return line
+
+
 class _Server(uvicorn.Server):
     """uvicorn's server, which says when it accepts connections and leaves the
     signals to ``serve``."""
@@ -78,6 +105,8 @@ async def serve(
     log_level: str = "info",
     grace_seconds: float = GRACE_SECONDS,
     stop: asyncio.Event | None = None,
+    launch_secret: str | None = None,
+    welcome: Callable[[str], None] | None = None,
 ) -> None:
     """Serve ``app`` until SIGINT, SIGTERM or ``stop``.
 
@@ -85,7 +114,17 @@ async def serve(
     without ``worker``, the worker listener stays closed. ``ready`` runs once
     both accept connections: it prints ``ready`` by default. Raises
     ``ServerError`` when the backend does not start.
+
+    In the local mode, ``launch_secret`` is the secret of this start, unless
+    ``app.launch_secret`` holds it already. ``welcome``, when given, gets the
+    address of a ticket after ``ready``, as a start by hand prints it.
     """
+    if launch_secret is not None:
+        if not app.local:
+            raise ServerError("a launch secret is for the local mode alone")
+        app.launch_secret = launch_secret
+    if app.local and app.launch_secret is None:
+        raise ServerError("the local mode starts with a launch secret")
     stop = asyncio.Event() if stop is None else stop
     servers: list[tuple[_Server, asyncio.Task[None]]] = []
     loop = asyncio.get_running_loop()
@@ -119,6 +158,8 @@ async def serve(
                 await task
                 raise ServerError(f"the {listener} listener did not start")
         ready()
+        if welcome is not None and app.launch_secret is not None:
+            welcome(await _ticket_url(app, app.launch_secret))
         stopping = asyncio.create_task(stop.wait())
         await asyncio.wait(
             {stopping, *(task for _, task in servers)},
@@ -133,6 +174,12 @@ async def serve(
             loop.remove_signal_handler(sig)
 
 
+async def _ticket_url(app: Composition, launch_secret: str) -> str:
+    launcher = await app.access.authenticate(launch_secret, bearer=True)
+    ticket, _ = await app.access.create_ticket(launcher)
+    return app.ticket_url(ticket)
+
+
 async def _serving(server: _Server, sockets: list[socket.socket] | None) -> None:
     try:
         await server.serve(sockets=sockets)
@@ -141,10 +188,29 @@ async def _serving(server: _Server, sockets: list[socket.socket] | None) -> None
         return
 
 
-def run(app: Composition, front: Where, worker: Where | None = None) -> None:
-    """Serve ``app`` until SIGINT or SIGTERM. Blocks. Exits 1 if it did not start."""
+def run(
+    app: Composition,
+    front: Where,
+    worker: Where | None = None,
+    *,
+    stdin: TextIO | None = None,
+) -> None:
+    """Serve ``app`` until SIGINT or SIGTERM. Blocks. Exits 1 if it did not start.
+
+    In the local mode, it reads the launch secret from ``stdin``, standard
+    input by default. A start by hand has none there: it makes one, and prints
+    ``open <url>`` after ``ready``, the address that signs the person in.
+    """
     try:
-        asyncio.run(serve(app, front, worker))
+        launch_secret, welcome = None, None
+        if app.local:
+            launch_secret = read_launch_secret(sys.stdin if stdin is None else stdin)
+            if launch_secret is None:
+                launch_secret = new_secret(CredentialKind.LAUNCH)
+                welcome = say_where
+        asyncio.run(
+            serve(app, front, worker, launch_secret=launch_secret, welcome=welcome)
+        )
     except ServerError as error:
         print(error, file=sys.stderr)
         raise SystemExit(1) from None

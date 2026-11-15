@@ -37,13 +37,22 @@ It ships two packages:
   runs. `serve` runs the result on uvicorn, with a front listener and a worker
   listener. `oneberth.web.testing` helps an application's tests do the same.
 
-The `/auth` routes take no local sign-in yet. The launcher and the window come later.
+- The local sign-in, for the desktop and for development. `compose_app(...,
+  local=True)` composes a backend with one user, the person at the machine, who
+  holds every role a person can hold. `oneberth.config.local_config` gives its
+  configuration. `run` reads the launch secret from standard input. The holder of
+  the secret asks `POST /auth/tickets` for a ticket and mints the workers' tokens.
+  `GET /auth/local?ticket=…` swaps a ticket for the session cookie. A start by
+  hand makes its own secret and prints the address with a ticket.
+
+The launcher and the window come later.
 
 ## Provenance
 
 The web part is written from neorc's `manager/` (`_access.py`, `_auth_routes.py`,
 `_sign_in.py`, `_ui.py`; Apache-2.0, The neorc Authors) and Robinauts' `web/`
-(`cookies.py`, `headers.py`, `pairing.py` and the `/auth` routes of `app.py`;
+(`cookies.py`, `headers.py`, `pairing.py`, the `/auth` routes of `app.py` and
+the check of a local `Host`;
 Apache-2.0, The Robinauts Authors). The QR encoder follows ISO/IEC 18004, and its
 tests compare it with `qrcodegen`.
 

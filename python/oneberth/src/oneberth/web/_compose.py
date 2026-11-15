@@ -14,6 +14,7 @@ reverse, and answers every error with one shape.
 
 from __future__ import annotations
 
+import getpass
 import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
@@ -115,6 +116,30 @@ class Composition:
         """The ``Access`` of the running backend; ``Refusal`` before it starts."""
         return self._backend.access
 
+    @property
+    def local(self) -> bool:
+        """Whether this is the local mode: one user, signed in with a ticket."""
+        return self._backend.local
+
+    @property
+    def launch_secret(self) -> str | None:
+        """The launch secret of this start, in the local mode.
+
+        Set it before the backend starts: ``serve`` does with the secret it is
+        given.
+        """
+        return self._backend.launch_secret
+
+    @launch_secret.setter
+    def launch_secret(self, secret: str | None) -> None:
+        if secret is not None and not self.local:
+            raise ValueError("a launch secret is for the local mode alone")
+        self._backend.launch_secret = secret
+
+    def ticket_url(self, ticket: str) -> str:
+        """Where ``ticket`` signs the local user in: what the window opens."""
+        return self._backend.ticket_url(ticket)
+
     def lifespan(self) -> AbstractAsyncContextManager[None]:
         """Start the backend and stop it at the end of the block."""
         return cast(
@@ -133,6 +158,8 @@ def compose_app(
     max_body: int = MAX_BODY_BYTES,
     clock: Clock = system_clock,
     provider_transport: httpx.AsyncBaseTransport | None = None,
+    local: bool = False,
+    local_user: str | None = None,
 ) -> Composition:
     """Compose ``apps`` into the web application a backend serves.
 
@@ -141,6 +168,13 @@ def compose_app(
     default. ``store`` is the deployment's store. ``interface`` is the
     directory of the built interface. ``clock`` and ``provider_transport``
     stand in for the time and the providers' network in tests.
+
+    ``local`` asks for the local mode (identity.md, "Locally"): one user, the
+    person at the machine, signed in with a ticket that the holder of the
+    launch secret asks for. ``config`` then names no provider and no allow
+    list, as ``local_config`` makes it. ``local_user`` is the name the local
+    user goes by: the login name of the operating system by default. The
+    backend starts once ``launch_secret`` is set; ``serve`` and ``run`` set it.
 
     Raises ``CompositionError`` for components that cannot be composed: a route
     without a permission, a permission nobody registered, two components of
@@ -172,6 +206,13 @@ def compose_app(
         config.policy.check(registry)
     except InvalidValueError as error:
         raise ConfigError([str(error)]) from None
+    if local and (config.providers or config.policy.allow or config.policy.grants):
+        raise ConfigError(
+            [
+                "the local mode signs its one user in with a ticket: the "
+                "configuration names no provider, [[allow]] or [[grant]]"
+            ]
+        )
     public_url = config.app(backend_name).public_url
     backend = Backend(
         name=backend_name,
@@ -180,6 +221,7 @@ def compose_app(
         cookies=Cookies.of(public_url),
         registry=registry,
         max_body=max_body,
+        local=local,
     )
 
     declared: dict[str, list[tuple[APIRoute, Permit]]] = {}
@@ -196,7 +238,14 @@ def compose_app(
             else:
                 opened = store
             await check_schema(opened)
-            access = config.access(opened, registry, clock=clock)
+            access = config.access(opened, registry, clock=clock, local=local)
+            if local:
+                if backend.launch_secret is None:
+                    raise ConfigError(["the local mode starts with a launch secret"])
+                await access.start_local(
+                    backend.launch_secret, name=local_user or _login_name()
+                )
+                stack.push_async_callback(access.stop_local)
             providers = None
             if config.providers:
                 from oneberth.providers import Providers
@@ -246,7 +295,7 @@ def compose_app(
         front.mount("/ui", interface_app(interface), name="ui")
     else:
         front.add_api_route("/ui/", not_built, include_in_schema=False)
-    front.add_middleware(Gate, backend=backend, rules=front_rules)
+    front.add_middleware(Gate, backend=backend, rules=front_rules, local_host=local)
     front.add_middleware(Shield)
 
     worker = _listener(apps, backend, None)
@@ -270,6 +319,13 @@ def compose_app(
         if component.health is not None:
             backend.health[component.name] = component.health
     return Composition(front, worker, backend)
+
+
+def _login_name() -> str | None:
+    try:
+        return getpass.getuser()
+    except (ImportError, KeyError, OSError):
+        return None
 
 
 def _declared(

@@ -9,6 +9,9 @@ Playwright, signs a person in through the stand-in provider on a port of its
 own. The person makes a personal token that a script then uses, links a phone
 from its QR code and the number the phone shows, and signs out.
 
+A second journey opens the window of the local mode on a launcher's ticket:
+the person lands signed in, with no sign-in page.
+
 It skips without the built page or a browser. CI builds both for one Python.
 ``ONEBERTH_TEST_CHROMIUM`` names a Chromium to use when Playwright's own build
 is not installed.
@@ -31,7 +34,8 @@ import pytest
 import uvicorn
 from fastapi import APIRouter
 
-from oneberth.identity import Role, RoleTable
+from oneberth.config import local_config
+from oneberth.identity import CredentialKind, Role, RoleTable, new_secret
 from oneberth.identity.memory import MemoryIdentityStore
 from oneberth.web import Asking, Component, compose_app, permit, serve
 from oneberth.web.testing import StandInProvider, bearer, config_for, read_qr
@@ -192,3 +196,68 @@ async def test_a_person_signs_in_makes_a_token_links_a_phone_and_signs_out(
             "fetch('/auth/session').then((answer) => answer.json())"
         )
         assert session["principal"] is None
+
+
+async def test_the_window_opens_on_a_ticket_signed_in(page: Any) -> None:
+    from playwright.async_api import expect
+
+    backend_socket = _bound()
+    port = backend_socket.getsockname()[1]
+    store = MemoryIdentityStore()
+    await store.setup()
+    composition = compose_app(
+        [_notes()],
+        config=local_config("notes", port=port),
+        store=store,
+        interface=PAGE,
+        local=True,
+        local_user="Ada",
+    )
+    secret = new_secret(CredentialKind.LAUNCH)
+    ready, stop = asyncio.Event(), asyncio.Event()
+    serving = asyncio.create_task(
+        serve(
+            composition,
+            backend_socket,
+            ready=ready.set,
+            log_level="warning",
+            stop=stop,
+            launch_secret=secret,
+        )
+    )
+    await asyncio.wait(
+        {serving, asyncio.create_task(ready.wait())}, return_when="FIRST_COMPLETED"
+    )
+    address = composition.public_url
+    try:
+        async with httpx.AsyncClient(base_url=address) as launcher:
+            asked = await launcher.post(
+                "/auth/tickets", json={}, headers=bearer(secret)
+            )
+
+        # The window opens on the ticket, and lands in the shell, signed in.
+        await page.goto(asked.json()["url"])
+        await expect(page.get_by_role("heading", name="Notes")).to_be_visible()
+        assert page.url.startswith(f"{address}/ui/")
+        await expect(page.get_by_role("link", name="Sign in")).to_have_count(0)
+
+        # No sign-out in the local mode, and no fresh sign-in for a token.
+        await page.get_by_role("button", name="Account").click()
+        await expect(page.get_by_text("Ada")).to_be_visible()
+        await expect(page.get_by_role("button", name="Sign out")).to_have_count(0)
+        await page.goto(f"{address}/ui/#/account/tokens")
+        await page.get_by_role("button", name="New token").click()
+        await page.get_by_label("Name of the token").fill("script")
+        await page.get_by_role("button", name="Create").click()
+        shown = page.get_by_role("region", name="The new token")
+        await expect(shown.get_by_text("ob_pat_")).to_be_visible()
+
+        # The session ends with the application: the window says to start again.
+        await composition.access.stop_local()
+        await page.reload()
+        await expect(
+            page.get_by_text("The session of this window has ended.")
+        ).to_be_visible()
+    finally:
+        stop.set()
+        await serving
