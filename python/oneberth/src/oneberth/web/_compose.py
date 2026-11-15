@@ -10,6 +10,11 @@ checks on a request and the security headers, and limits the size of a body.
 It builds the front listener and the worker listener, writes one OpenAPI
 document per component, starts the components in order and stops them in
 reverse, and answers every error with one shape.
+
+A component's life has four moments: its ``lifespan`` starts, then its
+``serving`` begins once both listeners accept connections; at the stop, its
+``serving`` ends while the listeners still serve, then its ``lifespan`` stops.
+Each moment runs in the order of the components, and each end in reverse.
 """
 
 from __future__ import annotations
@@ -74,6 +79,11 @@ StoreSource = IdentityStore | Callable[[], AbstractAsyncContextManager[IdentityS
 ``lambda: opened_store(database_url=url)``."""
 
 
+class ServerError(RuntimeError):
+    """The backend did not start: a listener could not be opened, or a
+    component failed to start or to begin serving."""
+
+
 class CompositionError(ValueError):
     """The components cannot be composed. ``problems`` lists every one found."""
 
@@ -90,10 +100,19 @@ class Composition:
     front listener's lifespan starts and stops both.
     """
 
-    def __init__(self, front: FastAPI, worker: FastAPI, backend: Backend) -> None:
+    def __init__(
+        self,
+        front: FastAPI,
+        worker: FastAPI,
+        backend: Backend,
+        apps: Sequence[Component] = (),
+        started: _Started | None = None,
+    ) -> None:
         self.front = front
         self.worker = worker
         self._backend = backend
+        self._apps = tuple(apps)
+        self._started = _Started() if started is None else started
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         await self.front(scope, receive, send)
@@ -149,6 +168,44 @@ class Composition:
             AbstractAsyncContextManager[None],
             self.front.router.lifespan_context(self.front),
         )
+
+    @asynccontextmanager
+    async def serving(self) -> AsyncIterator[None]:
+        """The components' ``serving``, for the block: begun in order, ended
+        in reverse. ``serve`` runs it once both listeners accept connections,
+        and ends it before they stop.
+
+        When one fails to begin, those begun already end, and this raises
+        ``ServerError``. A failure at the end is logged, and the other
+        components still end.
+        """
+        context = self._started.context
+        if context is None:
+            raise ServerError("the backend has not started")
+        begun: list[tuple[Component, AbstractAsyncContextManager[None]]] = []
+        try:
+            for component in self._apps:
+                if component.serving is None:
+                    continue
+                moment = component.serving(context)
+                try:
+                    await moment.__aenter__()
+                except Exception as error:
+                    log.exception(
+                        "component %s failed to begin serving", component.name
+                    )
+                    raise ServerError(
+                        f"component {component.name} failed to begin serving: {error}"
+                    ) from error
+                begun.append((component, moment))
+                log.info("component %s serves", component.name)
+            yield
+        finally:
+            for component, moment in reversed(begun):
+                try:
+                    await moment.__aexit__(None, None, None)
+                except Exception:
+                    log.exception("component %s failed to end serving", component.name)
 
 
 def compose_app(
@@ -235,6 +292,7 @@ def compose_app(
         declared[component.name] = _declared(component, registry, problems)
     if problems:
         raise CompositionError(problems)
+    started = _Started()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -258,6 +316,9 @@ def compose_app(
                     backend.launch_secret, name=local_user or _login_name()
                 )
                 stack.push_async_callback(access.stop_local)
+            # After every component has stopped: the tokens of the parts the
+            # backend started end with it.
+            stack.callback(access.end_tokens_in_memory)
             providers = None
             if config.providers:
                 from oneberth.providers import Providers
@@ -272,9 +333,11 @@ def compose_app(
                     log.info("component %s started", component.name)
             backend.access_or_none = access
             backend.providers = providers
+            started.context = context
             try:
                 yield
             finally:
+                started.context = None
                 backend.access_or_none = None
                 backend.providers = None
         log.info("backend %s stopped", backend_name)
@@ -334,7 +397,14 @@ def compose_app(
     for component in apps:
         if component.health is not None:
             backend.health[component.name] = component.health
-    return Composition(front, worker, backend)
+    return Composition(front, worker, backend, apps, started)
+
+
+@dataclass(slots=True)
+class _Started:
+    """What the lifespan of a running backend gives its components."""
+
+    context: Context | None = None
 
 
 def _login_name() -> str | None:

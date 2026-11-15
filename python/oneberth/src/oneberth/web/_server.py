@@ -4,10 +4,12 @@
 """The server: a composition on uvicorn, its front listener and its worker listener.
 
 ``serve`` starts the backend through the front listener, opens the worker
-listener when one is asked for, and then prints ``ready`` on standard output,
-the line a supervisor waits for (shapes.md, "Starting a worker"). SIGINT and
-SIGTERM stop it: the worker listener first, then the front listener, whose
-lifespan stops the components in reverse.
+listener when one is asked for, begins each component's ``serving``, and then
+prints ``ready`` on standard output, the line a supervisor waits for
+(shapes.md, "Starting a worker"). SIGINT and SIGTERM stop it: the components'
+``serving`` ends first, in reverse, while both listeners still serve. Then the
+worker listener stops, then the front listener, whose lifespan stops the
+components in reverse.
 
 A backend in the local mode starts with a launch secret. ``run`` reads it from
 standard input, where the launcher writes it. A start by hand has none there:
@@ -28,7 +30,7 @@ from typing import TextIO
 import uvicorn
 
 from oneberth.identity import CredentialKind, is_launch_secret, new_secret
-from oneberth.web._compose import Composition
+from oneberth.web._compose import Composition, ServerError
 
 READY = "ready"
 """The line ``serve`` prints once both listeners accept connections."""
@@ -47,10 +49,6 @@ class Listen:
 
 Where = Listen | socket.socket
 """An address to bind, or a socket bound already, as a test or a supervisor has."""
-
-
-class ServerError(RuntimeError):
-    """The backend did not start, or a listener could not be opened."""
 
 
 def say_ready() -> None:
@@ -111,9 +109,11 @@ async def serve(
     """Serve ``app`` until SIGINT, SIGTERM or ``stop``.
 
     ``front`` and ``worker`` are where its two listeners accept connections;
-    without ``worker``, the worker listener stays closed. ``ready`` runs once
-    both accept connections: it prints ``ready`` by default. Raises
-    ``ServerError`` when the backend does not start.
+    without ``worker``, the worker listener stays closed. Once both accept
+    connections, each component's ``serving`` begins, in order, and then
+    ``ready`` runs: it prints ``ready`` by default. Raises ``ServerError``
+    when the backend does not start, or a component fails to begin serving;
+    ``ready`` then never runs.
 
     In the local mode, ``launch_secret`` is the secret of this start, unless
     ``app.launch_secret`` holds it already. ``welcome``, when given, gets the
@@ -157,15 +157,16 @@ async def serve(
                 accepting.cancel()
                 await task
                 raise ServerError(f"the {listener} listener did not start")
-        ready()
-        if welcome is not None and app.launch_secret is not None:
-            welcome(await _ticket_url(app, app.launch_secret))
-        stopping = asyncio.create_task(stop.wait())
-        await asyncio.wait(
-            {stopping, *(task for _, task in servers)},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        stopping.cancel()
+        async with app.serving():
+            ready()
+            if welcome is not None and app.launch_secret is not None:
+                welcome(await _ticket_url(app, app.launch_secret))
+            stopping = asyncio.create_task(stop.wait())
+            await asyncio.wait(
+                {stopping, *(task for _, task in servers)},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            stopping.cancel()
     finally:
         for server, task in reversed(servers):
             server.should_exit = True

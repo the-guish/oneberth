@@ -41,6 +41,7 @@ from oneberth.web._compose import (
     RESERVED_NAMES,
     Composition,
     CompositionError,
+    ServerError,
     StoreSource,
     compose_app,
 )
@@ -50,7 +51,6 @@ from oneberth.web._qr import qr_svg
 from oneberth.web._server import (
     READY,
     Listen,
-    ServerError,
     Where,
     read_launch_secret,
     run,

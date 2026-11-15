@@ -17,7 +17,8 @@ It ships two packages:
   port, with a memory store and the store's contract suite.
 - The stores: `oneberth.identity.postgres`, in the PostgreSQL schema `oneberth`, and
   `oneberth.identity.sqlite`, in the file `oneberth.db`. Both pass the contract suite.
-  `oneberth.stores.opened_store` opens either for a backend.
+  `oneberth.stores.opened_store` opens either for a backend. Its `schema` names
+  another PostgreSQL schema, for tests that share a database.
 - The configuration reader, `oneberth.config`: the TOML file that `ONEBERTH_CONFIG` names.
 - The OpenID Connect client, `oneberth.providers`, for Google and Okta.
 - The admin scripts, `oneberth.admin`. The `oneberth` command runs them on PostgreSQL:
@@ -39,6 +40,19 @@ It ships two packages:
   asking before a handler runs. `serve` runs the result on uvicorn, with a front
   listener and a worker listener. `oneberth.web.testing` helps an application's
   tests do the same.
+
+  A component starts in its `lifespan`, before any listener serves. Its
+  `serving` begins once both listeners serve, before `ready`, and ends before
+  they stop. Both run in the order of the components and end in reverse. A
+  component sends its own requests to the backend from its `serving`, and
+  starts there the parts that call the backend. A `serving` that fails to
+  begin stops the start: the others end, the components stop, and nothing
+  says `ready`.
+
+- Tokens in memory. A backend mints a service token for a part it starts
+  itself with `Access.create_own_token`, in either mode. The token lives in
+  the backend's memory and ends with the process. It passes the checks of any
+  service token, the application's own included.
 
 - The local sign-in, for the desktop and for development. `compose_app(...,
   local=True)` composes a backend with one user, the person at the machine, who

@@ -74,7 +74,14 @@ class Component:
     router: APIRouter
     """Its routes, each with a ``permit``."""
     lifespan: Lifespan | None = None
-    """What it starts and stops with the backend, such as its stores."""
+    """What it starts and stops with the backend, such as its stores. No
+    listener serves yet: a request to the backend's own listeners waits for
+    ``serving``."""
+    serving: Lifespan | None = None
+    """What it runs while the backend serves. It begins once both listeners
+    accept connections and every component has started, before ``ready``.
+    It ends before the listeners stop. A request a component sends to its own
+    backend, or a part that calls the backend, starts here."""
     health: Health | None = None
     errors: Mapping[type[Exception], int] = field(default_factory=dict)
     """The status each of its errors answers with. A subclass takes its

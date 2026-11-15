@@ -47,7 +47,12 @@ class Backend:
     def access(self) -> Access:
         """The ``Access`` of the running backend."""
         if self.access_or_none is None:
-            raise Refusal(503, "Unavailable", "the backend is starting or stopping")
+            raise Refusal(
+                503,
+                "Unavailable",
+                "the backend is starting or stopping: a component's own requests "
+                "to it begin in its serving, once every component has started",
+            )
         return self.access_or_none
 
     async def principal_of(self, connection: HTTPConnection) -> Principal:

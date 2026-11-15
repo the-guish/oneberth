@@ -5,8 +5,9 @@
 
 - ``config_for`` gives a configuration where any person of the provider
   ``test`` may sign in.
-- ``running`` starts a composition and gives an ``httpx`` client on it, in
-  process, which sends ``Origin`` as a browser does.
+- ``running`` starts a composition, begins its components' ``serving``, and
+  gives an ``httpx`` client on it, in process, which sends ``Origin`` as a
+  browser does.
 - ``signed_in`` signs a person in and puts the session cookie on a client. In
   the local mode, it signs the local user in with a ticket, as the window does.
   ``service_token`` makes a service token.
@@ -91,16 +92,19 @@ def config_for(
 
 @asynccontextmanager
 async def running(composition: Composition) -> AsyncIterator[httpx.AsyncClient]:
-    """``composition`` started, and a client on its front listener.
+    """``composition`` started and serving, and a client on its front listener.
 
-    The client sends ``Origin`` with every request, as a browser does with a
-    write, and keeps the cookies the backend sets. A composition in the local
-    mode gets a launch secret of its own, unless it has one.
+    The components start, then their ``serving`` begins, as ``serve`` runs
+    them; at the end, their ``serving`` ends, then they stop. The client sends
+    ``Origin`` with every request, as a browser does with a write, and keeps
+    the cookies the backend sets. A composition in the local mode gets a
+    launch secret of its own, unless it has one.
     """
     if composition.local and composition.launch_secret is None:
         composition.launch_secret = new_secret(CredentialKind.LAUNCH)
     async with (
         composition.lifespan(),
+        composition.serving(),
         client_of(composition) as client,
     ):
         yield client
