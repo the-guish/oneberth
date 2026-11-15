@@ -372,9 +372,33 @@ async def test_a_store_is_named_once() -> None:
     with pytest.raises(ValueError, match="one of"):
         async with opened_store(database_url="postgresql://x", data_dir="."):
             pass
+    with pytest.raises(ValueError, match="PostgreSQL store alone"):
+        async with opened_store(data_dir=".", schema="beside"):
+            pass
 
 
 @pytest.mark.postgres
 async def test_the_cluster_opens_its_schema(database_url: str) -> None:
     async with opened_store(database_url=database_url, setup=True) as store:
         assert await store.schema_version() == 1
+
+
+@pytest.mark.postgres
+async def test_a_test_opens_a_schema_of_its_own_beside_the_others(
+    database_url: str,
+) -> None:
+    schema = "oneberth_beside"
+    conn = await asyncpg.connect(database_url)
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        async with opened_store(
+            database_url=database_url, setup=True, schema=schema
+        ) as store:
+            await store.upsert_user(
+                Identity("test", "ada"), user_id=uuid.uuid4(), now=ManualClock()()
+            )
+        rows = await conn.fetchval(f"SELECT count(*) FROM {schema}.users")
+        assert rows == 1
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await conn.close()
