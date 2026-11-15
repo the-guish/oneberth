@@ -97,14 +97,15 @@ export function useHash(): string {
 
 /**
  * Go to a hash. `replace` takes the place of the current entry in the
- * history, and the shell is told, since replacing fires no `hashchange`.
+ * history.
+ *
+ * The shell is told at once, in both cases. Replacing fires no `hashchange`,
+ * and a new hash fires it only a moment later: until then the page of the
+ * old route would still be shown, and what a person types would go to it.
  */
 export function go(hash: string, replace = false): void {
   if (location.hash === hash) return;
-  if (replace) {
-    history.replaceState(history.state, "", hash);
-    notify();
-  } else {
-    location.hash = hash;
-  }
+  if (replace) history.replaceState(history.state, "", hash);
+  else location.hash = hash;
+  notify();
 }
