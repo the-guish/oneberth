@@ -88,7 +88,14 @@ Each step leaves both applications working, with their tests passing.
   and two graph libraries. The budget is measured again.
 - A browser allows six connections per origin over HTTP/1.1. A Robinauts tab holds two, and
   neorc's long poll makes three. A hidden application stops its long polls.
-- Needs two decisions: the form that starts a run, and a flow handler's conversations.
+- neorc has a basic form to start a run. Robinauts overrides it with an A2UI description of
+  its own form ([neorc-in-robinauts.md](../specs/neorc-in-robinauts.md), "The form that
+  starts a run").
+- Robinauts describes a form in a file of its own today: labels, and lists of values for the
+  repository, the agent and the model. `review_loop.form.toml` in the scratchpad's demo is
+  one. The step turns such a file into an A2UI description, and Robinauts' own page to start
+  a run goes away.
+- A flow started by a person creates conversations for that person.
 
 ### 8. The SQLite stores
 
@@ -102,10 +109,12 @@ Each step leaves both applications working, with their tests passing.
 
 - In oneberth and Robinauts. The step builds local sign-in, the launcher and the window.
 - The launcher starts the backend and the workers, and gives each worker a service token.
+- The launcher is oneberth's. It starts components as processes and as Docker containers.
+  The cluster starts Robinauts' web application directly, without it.
 - Robinauts' server starts its workers itself today, in `cli/lifecycle.py`. That code is
   where the launcher starts from.
-- Needs three decisions: the modes without credentials, the launcher's repository, and
-  what closing the window does.
+- Closing the window stops the application and ends the turns that run.
+- Needs one decision: how the local user is authenticated.
 
 ### 10. The test of SQLite with Docker on macOS
 
@@ -131,27 +140,13 @@ Steps 8 to 11 are the desktop.
 
 ## Decisions needed
 
-### Before step 7
-
-**Where does the form that starts a run live?** Robinauts has its own form, with lists of
-values for models, agents and repositories. neorc has forms of its own, with fixed options.
-One way keeps neorc's form and lets the host fill the lists.
-
-**Whose conversations does a flow handler create?** They are the developer's today, without
-sign-in. With sign-in the handler's token decides: the token of the person who started the
-run, or a service of its own.
-
 ### Before step 9
 
-**Do the modes without credentials go away?** The specs remove `--no-auth` and
-`--dev-no-sign-in`. A developer then opens the printed URL once, and a script needs a token.
-The alternative keeps them for development and forbids them beside an untrusted worker.
-
-**Does the launcher start in oneberth?** Robinauts is its one user at first.
-The launcher can start in Robinauts and move once neorc needs it.
-
-**What does closing the window do?** A turn runs in the background by design. Stopping the
-application with its window ends running turns. Keeping it alive leaves processes nobody sees.
+**How is the local user authenticated?** Two points are settled. The development mode
+always has an identity, with no code special to it. The local user is asked for no sign-in
+at a remote site. The way is open. The specs propose a ticket: the launcher asks the backend
+for one and opens the window with it, and the person types nothing
+([identity.md](../specs/identity.md), "Locally").
 
 ### Before step 11
 

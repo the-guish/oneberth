@@ -71,7 +71,7 @@ Robinauts, about 1,700 lines.
 | part | stops having |
 |---|---|
 | Robinauts' backend | the manager served without authentication, and the rule that refuses flows while sign-in is on; the rewrite of neorc's frame headers, `Framable`; `flows_url` in the answer of `GET /auth/session`; `--dev-no-sign-in`; the start of its own workers |
-| Robinauts' interface | the Sessions and Flows tabs; its copy of neorc's navigation (`flows/FlowsSection.tsx`, `flows/orchestrator.ts`); the frame around neorc's interface (`flows/FlowsPage.tsx`); the profile block of its panel; `session/` and `devices/` |
+| Robinauts' interface | the Sessions and Flows tabs; its copy of neorc's navigation (`flows/FlowsSection.tsx`, `flows/orchestrator.ts`); the frame around neorc's interface (`flows/FlowsPage.tsx`); its own page to start a run (`flows/NewRunPage.tsx`, `flows/intake.ts`); the profile block of its panel; `session/` and `devices/` |
 | neorc's backend | `--no-auth`; the identity core in `neorc-core` |
 | neorc's interface | the `?embedded` switch; the profile at the bottom of its sidebar; `session.ts` and `SignIn.tsx` |
 

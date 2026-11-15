@@ -58,7 +58,9 @@ This is the desktop's mode, and the mode for development.
 - The front listener accepts requests whose `Host` is `localhost` or an IP address.
   This defeats DNS rebinding.
 - A start command without a launcher signs the person in itself. It prints the URL with the ticket.
-- Development uses the local mode too. No start option serves a request without a credential.
+- Development uses the local mode too. Every request there has an identity, and no code is
+  special to development.
+- The local mode asks the person for no sign-in. No remote site takes part.
 
 ## Users
 
@@ -246,3 +248,4 @@ oneberth holds the admin scripts both applications reuse.
 - Sign-out at the identity provider.
 - A limit on the rate of sign-ins.
 - Sign-in through a provider on the desktop.
+- How the local user is authenticated. The ticket of "Locally" is the proposal.

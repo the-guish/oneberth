@@ -129,6 +129,8 @@ host's gateway name.
 ## The launcher
 
 - The launcher is a part of the `oneberth` Python library. An application's command calls it.
+- The launcher starts components as processes and as Docker containers.
+- A cluster starts Robinauts' web application directly, without the launcher.
 - The application gives the launcher a list of components. Each has a name, a command or an
   image, a trust level and the configuration it needs.
 - The launcher runs on Linux and macOS.
@@ -151,8 +153,9 @@ The launch secret and the tokens of a start end at the stop.
 - The window is Chrome or Chromium started with `--app=<url>`. It has no address bar and no tabs.
 - The window uses a profile directory of its own, inside the data directory. The launcher can
   then watch the window's process, and the session cookie stays out of the person's everyday profile.
+- Closing the window stops the application. The turns that run then end.
 - The launcher looks for Chrome, Chromium, Edge and Brave. It opens the default browser at the
-  same URL when it finds none.
+  same URL when it finds none. The application then stops on a signal alone.
 - The front listener keeps the same port across starts. A browser remembers the theme, the
   open application and the folded panels per origin.
 - A link to another site opens in a plain window of the same profile. This is a known limit.
@@ -184,5 +187,4 @@ The launch secret and the tokens of a start end at the stop.
 
 - How an untrusted worker reaches a model. It holds none of the operator's keys.
 - The path between a VM and the worker listener.
-- What closing the window does: stop the application, or leave it running.
 - The data directory with Docker on macOS: the host directory, or a Docker volume.

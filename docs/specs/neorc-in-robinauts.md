@@ -57,6 +57,17 @@ components over that address ([shell.md](shell.md)).
   session makes the second one quick.
 - The desktop has one address, Robinauts'.
 
+## The form that starts a run
+
+- neorc has a basic form to start a run, with one field per input of the flow.
+- A host application overrides that form for a flow. It supplies a description of the form in
+  A2UI, and neorc draws it.
+- Robinauts supplies its forms this way. A Robinauts form has lists of values that Robinauts
+  fills: the repositories with their branches, the agents and the models.
+- The host gives neorc's root component its source of forms. neorc draws the basic form for
+  a flow the host has no form for.
+- A form sends the flow's inputs, whoever described it.
+
 ## Requests of the backend's own
 
 - Robinauts' backend uploads the flows it ships. It uses a service token with the role `neorc/ci`.
@@ -66,9 +77,10 @@ components over that address ([shell.md](shell.md)).
 
 - Some flow handlers drive Robinauts' API: the handlers Robinauts ships start conversations
   and turns.
+- A run records the person who started it. The conversations a handler creates for that run
+  belong to that person.
 - Such a handler runs on a trusted worker and has a token for the front listener.
 - An untrusted worker has no route to the front listener, and these handlers do not run there.
-- Whose conversations such a handler creates is open.
 
 ## Details likely to change
 
@@ -77,4 +89,5 @@ components over that address ([shell.md](shell.md)).
 
 ## Open
 
-- Whose conversations a flow handler creates.
+- The credential a handler uses to act for the person who started its run.
+- Who owns the conversations of a run that a service started.

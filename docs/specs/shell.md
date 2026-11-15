@@ -100,7 +100,3 @@ The shell draws the rail, the sign-in page and the account pages. An application
 - The icons, and the width of the rail.
 - The names of the packages and of the root component.
 - Robinauts' bundle budget.
-
-## Open
-
-- Where the form that starts a run lives, and who fills its lists of values.
