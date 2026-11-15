@@ -10,7 +10,7 @@
  * sign-in:
  *
  * - `GET /__dev/pairings/latest`: `{code}` of the latest pairing that waits;
- * - `POST /__dev/claim`: claims that pairing, answers `{secret, number}`;
+ * - `POST /__dev/claim`: claims that pairing, answers `{secret, number, expires_at}`;
  * - `POST /__dev/stale`: makes the sign-in older than ten minutes;
  * - `POST /__dev/end-session`: ends the session on the server;
  * - `POST /__dev/reset`: starts again from nothing.

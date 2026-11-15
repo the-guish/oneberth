@@ -34,6 +34,8 @@ The library's modules:
     oneberth/providers.py         the OpenID Connect client (extra: providers)
     oneberth/stores.py            how a backend opens its store
     oneberth/admin.py             the admin scripts, and the `oneberth` command
+    oneberth/web/                 components, compose_app, /auth, the server (extra: web)
+    oneberth/web/testing.py       what an application's tests use to drive a composition
 
 Test modules have names unique across the repository, such as `test_identity_rules.py`.
 pytest and mypy collect them in one run. Shared fixtures go in the root `conftest.py`.
@@ -57,6 +59,17 @@ empty:
     export ONEBERTH_TEST_DATABASE_URL=postgresql://postgres:secret@127.0.0.1:5432/oneberth_test
 
 Without the variable, they skip. CI gives them a server.
+
+## The browser journey
+
+One test drives a real Chromium through the node package's development page,
+served by a composed backend. It needs the page built, with Node.js 24:
+
+    (cd ts/oneberth-ui && npm ci && npm run build:page)
+
+Playwright then looks for its own Chromium. Set `ONEBERTH_TEST_CHROMIUM` to the
+executable of another one. Without the page or a browser, the test skips. CI
+builds both for one Python.
 
 ## Licence headers
 

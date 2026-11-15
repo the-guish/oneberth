@@ -13,8 +13,9 @@
  * on a write, a fresh sign-in to mint a person's credential, and the pairing
  * rules of two minutes, one claim and three wrong numbers.
  *
- * It is not the backend. Shapes and codes follow the contract the package
- * reads; the Python side is the authority once it exists.
+ * It is not the backend. Its shapes and codes are those of the `/auth`
+ * routes of `oneberth.web`, which are the authority; the browser journey of
+ * the Python library runs this package against those routes.
  */
 
 export interface FakeUser {
@@ -145,18 +146,21 @@ export class FakeAuth {
     return waiting.at(-1)?.code ?? null;
   }
 
-  /** What a phone does with a code: claims it, and gets a secret and a number. */
+  /**
+   * What a phone does with a code: claims it, and gets a secret, a number and
+   * the time the claim ends.
+   */
   claim(
     code: string,
     device = { name: "Pixel 9", platform: "android", app_version: "1.0.0" as string | null },
-  ): { secret: string; number: string } | null {
+  ): { secret: string; number: string; expires_at: string } | null {
     const pairing = this.pairings.find((one) => one.code === code);
     if (pairing === undefined || pairing.state !== "waiting" || !this.alive(pairing)) return null;
     pairing.state = "claimed";
     pairing.device = device;
     pairing.number = String(100_000 + (this.next() % 900_000));
     pairing.expiresAt = this.now() + PAIRING_MS;
-    return { secret: `ob_dev_${this.id()}`, number: pairing.number };
+    return { secret: `ob_dev_${this.id()}`, number: pairing.number, expires_at: this.iso(pairing.expiresAt) };
   }
 
   private next(): number {
@@ -184,6 +188,7 @@ export class FakeAuth {
       providers: this.providers,
       principal: user === null ? null : { kind: "user", ...user },
       roles: user === null ? [] : this.roles,
+      pairing: null,
     };
   }
 
@@ -228,12 +233,20 @@ export class FakeAuth {
       try {
         body = (await request.json()) as Record<string, unknown>;
       } catch {
-        return refusal(422, "InvalidBody", "The body is not JSON.");
+        return refusal(422, "InvalidRequest", "The body is not JSON.");
       }
     }
 
     if (method === "POST" && path === "/auth/pairings/claim") {
-      const claimed = this.claim(String(body.code ?? ""));
+      const device = body.device as { name?: unknown; platform?: unknown; app_version?: unknown } | undefined;
+      if (typeof device?.name !== "string" || typeof device.platform !== "string") {
+        return refusal(422, "InvalidRequest", "A claim names the code and the device.");
+      }
+      const claimed = this.claim(String(body.code ?? ""), {
+        name: device.name,
+        platform: device.platform,
+        app_version: typeof device.app_version === "string" ? device.app_version : null,
+      });
       if (claimed === null) return refusal(404, "NotFound", "That code is not waiting.");
       return Response.json(claimed);
     }
@@ -259,7 +272,7 @@ export class FakeAuth {
         return refusal(403, "FreshSignInRequired", "Sign in again: the sign-in is older than ten minutes.");
       }
       const name = String(body.name ?? "").trim();
-      if (name === "") return refusal(422, "InvalidBody", "A token needs a name.");
+      if (name === "") return refusal(422, "InvalidValue", "A token needs a name.");
       const now = this.now();
       const token = {
         id: this.id(),
@@ -350,10 +363,10 @@ export class FakeAuth {
     if (parts.length === 2 && method === "GET") return Response.json({ items: this.services });
     if (parts.length === 2 && method === "POST") {
       const role = SERVICE_ROLES.find((one) => one.name === body.role);
-      if (role === undefined) return refusal(422, "UnknownRole", "No such role.");
+      if (role === undefined) return refusal(422, "InvalidValue", "No such role.");
       const resource = typeof body.resource === "string" ? body.resource : null;
       if (role.needs_resource !== (resource !== null)) {
-        return refusal(422, "InvalidGrant", `The role ${role.name} needs ${role.needs_resource ? "a" : "no"} resource.`);
+        return refusal(422, "InvalidValue", `The role ${role.name} needs ${role.needs_resource ? "a" : "no"} resource.`);
       }
       const now = this.now();
       const days = typeof body.days === "number" ? body.days : null;

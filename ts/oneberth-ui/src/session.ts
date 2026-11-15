@@ -50,6 +50,11 @@ export interface Session {
   principal: Principal | null;
   /** The roles of the principal; empty when nobody is signed in. */
   roles: string[];
+  /**
+   * For a phone whose claim waits on the person's approval: how the pairing
+   * stands. `null` for everyone else, and absent from an older backend.
+   */
+  pairing?: { state: "waiting" | "claimed" | "approved" } | null;
 }
 
 /** The role whose holder manages the service tokens. */

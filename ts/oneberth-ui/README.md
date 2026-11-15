@@ -78,6 +78,7 @@ Node.js at the version in `.nvmrc`. Installs are `npm ci`, never `npm install`.
 | `npm run typecheck` | the type check, with the strictest flags of both hosts |
 | `npm test` | the component tests, with Vitest |
 | `npm run build` | the gate in place of a build: the type check, a build of the source as a host builds it, the licence allowlist, the size budget, and `scripts/check-package.mjs` |
+| `npm run build:page` | builds the development page into `dist-page/`, for a composed backend to serve under `/ui/`; the browser journey of the Python library runs on it |
 
 The development page uses an in-memory stand-in for `/auth`
 (`dev/fakeAuth.ts`). `ONEBERTH_UI_MODE=local npm run dev` starts it in the

@@ -36,6 +36,11 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          # The browser journey needs the built page of the node package and
+          # Chromium: once is enough.
+          - python-version: "3.12"
+            browser: true
     services:
       # The PostgreSQL store's tests run against this server.
       postgres:
@@ -58,6 +63,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked
+      - if: matrix.browser
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ts/oneberth-ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ts/oneberth-ui/package-lock.json
+      - if: matrix.browser
+        name: Build the page of the node package and fetch a browser, for the browser journey
+        run: |
+          (cd ts/oneberth-ui && npm ci && npm run build:page)
+          uv run playwright install --with-deps chromium
       - run: uv run pytest
         env:
           ONEBERTH_TEST_DATABASE_URL: postgresql://postgres:secret@127.0.0.1:5432/oneberth_test
