@@ -29,6 +29,24 @@ It ships two packages:
 
   An application shows the same commands under its own name, with its own roles.
 
+- The web part, `oneberth.web`, in the extra `oneberth[web]`. An application gives
+  a `Component`: its name, its roles, a FastAPI router whose routes each declare a
+  permission with `permit`, and what it starts and stops. `compose_app` composes
+  components into a backend's web application. It serves the `/auth` routes, the
+  interface under `/ui/` and `/health`, and checks who is asking before a handler
+  runs. `serve` runs the result on uvicorn, with a front listener and a worker
+  listener. `oneberth.web.testing` helps an application's tests do the same.
+
+The `/auth` routes take no local sign-in yet. The launcher and the window come later.
+
+## Provenance
+
+The web part is written from neorc's `manager/` (`_access.py`, `_auth_routes.py`,
+`_sign_in.py`, `_ui.py`; Apache-2.0, The neorc Authors) and Robinauts' `web/`
+(`cookies.py`, `headers.py`, `pairing.py` and the `/auth` routes of `app.py`;
+Apache-2.0, The Robinauts Authors). The QR encoder follows ISO/IEC 18004, and its
+tests compare it with `qrcodegen`.
+
 ## Documents
 
 - [docs/specs](docs/specs/README.md): the specs. They describe the desired state, and

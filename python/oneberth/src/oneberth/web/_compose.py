@@ -1,0 +1,445 @@
+# Copyright 2026 The oneberth Authors
+# SPDX-License-Identifier: Apache-2.0
+
+"""``compose_app``: the web application of a backend, built from components.
+
+It serves each component's routes under ``/<name>/``, oneberth's routes under
+``/auth``, the interface under ``/ui/`` and ``/health``. It finds who is
+asking and checks a route's permission before the handler runs, applies the
+checks on a request and the security headers, and limits the size of a body.
+It builds the front listener and the worker listener, writes one OpenAPI
+document per component, starts the components in order and stops them in
+reverse, and answers every error with one shape.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
+
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.routing import APIRoute
+from starlette.exceptions import HTTPException
+from starlette.types import Receive, Scope, Send
+
+from oneberth.config import Config, ConfigError
+from oneberth.identity import (
+    ONEBERTH_ROLES,
+    Access,
+    Clock,
+    IdentityError,
+    IdentityStore,
+    InvalidValueError,
+    Registry,
+    check_schema,
+    system_clock,
+)
+from oneberth.identity._roles import is_app_name
+from oneberth.web import _auth
+from oneberth.web._backend import Backend
+from oneberth.web._checks import Cookies
+from oneberth.web._component import Component, Context, Permit, permits_of
+from oneberth.web._errors import (
+    ErrorBody,
+    Refusal,
+    http_error_name,
+    identity_refusal,
+    status_in,
+)
+from oneberth.web._gate import Gate, Rule, Shield
+from oneberth.web._interface import interface_app, not_built
+
+if TYPE_CHECKING:
+    import httpx
+
+log = logging.getLogger("oneberth.web")
+
+MAX_BODY_BYTES = 16 * 1024 * 1024
+"""The largest body a request may carry, by default."""
+
+RESERVED_NAMES = frozenset({"auth", "ui", "health", "oneberth"})
+"""Addresses of oneberth's own; no component is named so."""
+
+StoreSource = IdentityStore | Callable[[], AbstractAsyncContextManager[IdentityStore]]
+"""A store open already, or what opens it for the life of the backend, such as
+``lambda: opened_store(database_url=url)``."""
+
+
+class CompositionError(ValueError):
+    """The components cannot be composed. ``problems`` lists every one found."""
+
+    def __init__(self, problems: list[str]) -> None:
+        self.problems = problems
+        super().__init__("the components cannot be composed:\n" + "\n".join(problems))
+
+
+class Composition:
+    """A backend's web application: the front listener, and the worker listener.
+
+    It is itself the front listener's ASGI application. ``worker`` serves the
+    routes a worker role may call, and shares the front listener's state: the
+    front listener's lifespan starts and stops both.
+    """
+
+    def __init__(self, front: FastAPI, worker: FastAPI, backend: Backend) -> None:
+        self.front = front
+        self.worker = worker
+        self._backend = backend
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        await self.front(scope, receive, send)
+
+    @property
+    def name(self) -> str:
+        return self._backend.name
+
+    @property
+    def public_url(self) -> str:
+        return self._backend.public_url
+
+    @property
+    def cookies(self) -> Cookies:
+        return self._backend.cookies
+
+    @property
+    def registry(self) -> Registry:
+        return self._backend.registry
+
+    @property
+    def access(self) -> Access:
+        """The ``Access`` of the running backend; ``Refusal`` before it starts."""
+        return self._backend.access
+
+    def lifespan(self) -> AbstractAsyncContextManager[None]:
+        """Start the backend and stop it at the end of the block."""
+        return cast(
+            AbstractAsyncContextManager[None],
+            self.front.router.lifespan_context(self.front),
+        )
+
+
+def compose_app(
+    apps: Sequence[Component],
+    *,
+    config: Config,
+    store: StoreSource,
+    interface: Path | None = None,
+    name: str | None = None,
+    max_body: int = MAX_BODY_BYTES,
+    clock: Clock = system_clock,
+    provider_transport: httpx.AsyncBaseTransport | None = None,
+) -> Composition:
+    """Compose ``apps`` into the web application a backend serves.
+
+    ``config`` is the deployment's sign-in configuration, and the backend's
+    ``public_url`` is the one under its ``name``: the first component's by
+    default. ``store`` is the deployment's store. ``interface`` is the
+    directory of the built interface. ``clock`` and ``provider_transport``
+    stand in for the time and the providers' network in tests.
+
+    Raises ``CompositionError`` for components that cannot be composed: a route
+    without a permission, a permission nobody registered, two components of
+    one name. Raises ``ConfigError`` for a configuration that does not fit.
+    """
+    problems: list[str] = []
+    if not apps:
+        problems.append("compose at least one component")
+    seen: set[str] = set()
+    for component in apps:
+        if not is_app_name(component.name) or component.name in RESERVED_NAMES:
+            problems.append(
+                f"{component.name!r} cannot name a component: lower-case letters, "
+                f"digits and -, and none of {', '.join(sorted(RESERVED_NAMES))}"
+            )
+        if component.name in seen:
+            problems.append(f"two components are named {component.name!r}")
+        seen.add(component.name)
+        if component.roles.app != component.name:
+            problems.append(
+                f"component {component.name!r} declares the roles of "
+                f"{component.roles.app!r}"
+            )
+    if problems:
+        raise CompositionError(problems)
+    registry = Registry([ONEBERTH_ROLES, *(c.roles for c in apps)])
+    backend_name = apps[0].name if name is None else name
+    try:
+        config.policy.check(registry)
+    except InvalidValueError as error:
+        raise ConfigError([str(error)]) from None
+    public_url = config.app(backend_name).public_url
+    backend = Backend(
+        name=backend_name,
+        config=config,
+        public_url=public_url,
+        cookies=Cookies.of(public_url),
+        registry=registry,
+        max_body=max_body,
+    )
+
+    declared: dict[str, list[tuple[APIRoute, Permit]]] = {}
+    for component in apps:
+        declared[component.name] = _declared(component, registry, problems)
+    if problems:
+        raise CompositionError(problems)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        async with AsyncExitStack() as stack:
+            if callable(store):
+                opened = await stack.enter_async_context(store())
+            else:
+                opened = store
+            await check_schema(opened)
+            access = config.access(opened, registry, clock=clock)
+            providers = None
+            if config.providers:
+                from oneberth.providers import Providers
+
+                providers = Providers(
+                    access, config.providers, transport=provider_transport
+                )
+            context = Context(access=access, config=config, public_url=public_url)
+            for component in apps:
+                if component.lifespan is not None:
+                    await stack.enter_async_context(component.lifespan(context))
+                    log.info("component %s started", component.name)
+            backend.access_or_none = access
+            backend.providers = providers
+            try:
+                yield
+            finally:
+                backend.access_or_none = None
+                backend.providers = None
+        log.info("backend %s stopped", backend_name)
+
+    front = _listener(apps, backend, lifespan)
+    front.include_router(_auth.router)
+    front_rules = _own_rules(_auth.router)
+    front.add_api_route("/health", _health, include_in_schema=False)
+    front.add_api_route(
+        "/auth/openapi.json",
+        _document("oneberth", "0", [(_auth.router, "")]),
+        include_in_schema=False,
+    )
+    for component in apps:
+        prefix = f"/{component.name}"
+        front.add_api_route(
+            f"{prefix}/openapi.json",
+            _document(
+                component.title or component.name,
+                component.version,
+                [(component.router, prefix)],
+            ),
+            include_in_schema=False,
+        )
+        _include(front, component.router, prefix)
+        front_rules += _rules(prefix, declared[component.name])
+    front.add_api_route("/", _to_interface, include_in_schema=False)
+    front.add_api_route("/ui", _to_interface, include_in_schema=False)
+    if interface is not None:
+        front.mount("/ui", interface_app(interface), name="ui")
+    else:
+        front.add_api_route("/ui/", not_built, include_in_schema=False)
+    front.add_middleware(Gate, backend=backend, rules=front_rules)
+    front.add_middleware(Shield)
+
+    worker = _listener(apps, backend, None)
+    worker.add_api_route("/health", _health, include_in_schema=False)
+    worker_rules: list[Rule] = []
+    for component in apps:
+        served = [
+            (route, permit)
+            for route, permit in declared[component.name]
+            if registry.held_by_worker_role(permit.permission)
+        ]
+        if served:
+            sub = APIRouter()
+            sub.routes.extend(route for route, _ in served)
+            prefix = f"/{component.name}"
+            _include(worker, sub, prefix)
+            worker_rules += _rules(prefix, served)
+    worker.add_middleware(Gate, backend=backend, rules=worker_rules)
+    worker.add_middleware(Shield)
+    for component in apps:
+        if component.health is not None:
+            backend.health[component.name] = component.health
+    return Composition(front, worker, backend)
+
+
+def _declared(
+    component: Component, registry: Registry, problems: list[str]
+) -> list[tuple[APIRoute, Permit]]:
+    """Each route of a component and the permission it declares, or the problems."""
+    found: list[tuple[APIRoute, Permit]] = []
+    for route in component.router.routes:
+        if not isinstance(route, APIRoute):
+            path = getattr(route, "path", repr(route))
+            problems.append(
+                f"{component.name}: {path} is not a FastAPI route, and declares "
+                "no permission"
+            )
+            continue
+        methods = ",".join(sorted(route.methods or ()))
+        where = f"{component.name}: {methods} {route.path}"
+        permits, _ = permits_of(route.dependant)
+        if not permits:
+            problems.append(f"{where} declares no permission: add permit(...)")
+            continue
+        if len(permits) > 1:
+            problems.append(f"{where} declares {len(permits)} permissions: one, please")
+            continue
+        (permit,) = permits
+        if not registry.has_permission(permit.permission):
+            problems.append(
+                f"{where} needs {permit.permission!r}, which no application registered"
+            )
+            continue
+        if (
+            permit.resource is not None
+            and permit.resource not in route.param_convertors
+        ):
+            problems.append(
+                f"{where}: the resource {permit.resource!r} is not a parameter of "
+                "its path"
+            )
+            continue
+        found.append((route, permit))
+    return found
+
+
+def _rules(prefix: str, declared: Sequence[tuple[APIRoute, Permit]]) -> list[Rule]:
+    return [
+        Rule(
+            prefix + route.path,
+            frozenset(route.methods or ()),
+            permit.permission,
+            permit.resource,
+        )
+        for route, permit in declared
+    ]
+
+
+def _own_rules(router: APIRouter) -> list[Rule]:
+    """oneberth's own routes that need a principal; the router holds its prefix."""
+    rules: list[Rule] = []
+    for route in router.routes:
+        if isinstance(route, APIRoute):
+            permits, signed_in = permits_of(route.dependant)
+            if signed_in:
+                permission = permits[0].permission if permits else None
+                rules.append(
+                    Rule(route.path, frozenset(route.methods or ()), permission)
+                )
+    return rules
+
+
+def _include(app: FastAPI, router: APIRouter, prefix: str) -> None:
+    app.include_router(
+        router,
+        prefix=prefix,
+        responses={"default": {"model": ErrorBody, "description": "A refusal"}},
+    )
+
+
+def _listener(
+    apps: Sequence[Component],
+    backend: Backend,
+    lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None,
+) -> FastAPI:
+    app = FastAPI(
+        title=backend.name,
+        openapi_url=None,
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
+    app.state.oneberth = backend
+    _install_errors(app, apps)
+    return app
+
+
+def _install_errors(app: FastAPI, apps: Sequence[Component]) -> None:
+    async def refused(request: Request, exc: Exception) -> JSONResponse:
+        assert isinstance(exc, Refusal)
+        return exc.answer()
+
+    async def identity(request: Request, exc: Exception) -> JSONResponse:
+        assert isinstance(exc, IdentityError)
+        refusal = identity_refusal(exc)
+        headers = {"www-authenticate": "Bearer"} if refusal.status == 401 else None
+        return refusal.answer(headers)
+
+    async def invalid(request: Request, exc: Exception) -> JSONResponse:
+        assert isinstance(exc, RequestValidationError)
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in error.get('loc', ()))}: {error.get('msg')}"
+            for error in exc.errors()
+        )
+        return Refusal(422, "InvalidRequest", problems or "invalid request").answer()
+
+    async def http(request: Request, exc: Exception) -> JSONResponse:
+        assert isinstance(exc, HTTPException)
+        return Refusal(
+            exc.status_code, http_error_name(exc.status_code), str(exc.detail)
+        ).answer(exc.headers)
+
+    app.add_exception_handler(Refusal, refused)
+    app.add_exception_handler(IdentityError, identity)
+    app.add_exception_handler(RequestValidationError, invalid)
+    app.add_exception_handler(HTTPException, http)
+    for component in apps:
+        for cls in component.errors:
+
+            async def application(
+                request: Request, exc: Exception, component: Component = component
+            ) -> JSONResponse:
+                status = status_in(component.errors, exc) or 500
+                return JSONResponse(component.error_body(exc), status_code=status)
+
+            app.add_exception_handler(cls, application)
+
+
+async def _health(request: Request) -> JSONResponse:
+    backend: Backend = request.app.state.oneberth
+    if backend.access_or_none is None:
+        return JSONResponse({"status": "starting", "components": {}}, status_code=503)
+    states: dict[str, str] = {}
+    for component, healthy in backend.health.items():
+        try:
+            well = bool(await healthy())
+        except Exception:
+            log.exception("the health of %s could not be read", component)
+            well = False
+        states[component] = "ok" if well else "failing"
+    ok = all(state == "ok" for state in states.values())
+    return JSONResponse(
+        {"status": "ok" if ok else "failing", "components": states},
+        status_code=200 if ok else 503,
+    )
+
+
+async def _to_interface() -> RedirectResponse:
+    return RedirectResponse("/ui/")
+
+
+def _document(
+    title: str, version: str, routers: Sequence[tuple[APIRouter, str]]
+) -> Callable[[], Any]:
+    """The OpenAPI document of some routers, written at the first ask."""
+    cache: dict[str, Any] = {}
+
+    async def document() -> JSONResponse:
+        if "document" not in cache:
+            app = FastAPI(title=title, version=version)
+            for router, prefix in routers:
+                _include(app, router, prefix)
+            cache["document"] = app.openapi()
+        return JSONResponse(cache["document"], headers={"cache-control": "no-cache"})
+
+    return document
