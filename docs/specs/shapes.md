@@ -146,7 +146,7 @@ The launcher starts an application in this order:
 6. It asks the backend for a ticket and opens the window with it.
 
 The launcher stops the workers first and the backend last.
-The launch secret and the tokens of a start end at the stop.
+The launch secret, the tokens and the session of a start end at the stop.
 
 ## The window
 

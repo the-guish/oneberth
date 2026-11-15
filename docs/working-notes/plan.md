@@ -114,7 +114,8 @@ Each step leaves both applications working, with their tests passing.
 - Robinauts' server starts its workers itself today, in `cli/lifecycle.py`. That code is
   where the launcher starts from.
 - Closing the window stops the application and ends the turns that run.
-- Needs one decision: how the local user is authenticated.
+- The local user is signed in with the launcher's ticket, and types nothing. The session
+  lasts until the application stops. A script uses a personal token from the account page.
 
 ### 10. The test of SQLite with Docker on macOS
 
@@ -139,14 +140,6 @@ Steps 1 to 7 remove the duplication.
 Steps 8 to 11 are the desktop.
 
 ## Decisions needed
-
-### Before step 9
-
-**How is the local user authenticated?** Two points are settled. The development mode
-always has an identity, with no code special to it. The local user is asked for no sign-in
-at a remote site. The way is open. The specs propose a ticket: the launcher asks the backend
-for one and opens the window with it, and the person types nothing
-([identity.md](../specs/identity.md), "Locally").
 
 ### Before step 11
 

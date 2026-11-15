@@ -55,6 +55,8 @@ This is the desktop's mode, and the mode for development.
   backend's standard input. It then asks the backend for a ticket and opens the window at
   `/auth/local?ticket=…`. The backend swaps the ticket for a session cookie.
 - A ticket works once, within one minute.
+- A local session lasts until the application stops.
+- The local mode skips the ten-minute rule on minting. A new ticket would prove nothing more.
 - The front listener accepts requests whose `Host` is `localhost` or an IP address.
   This defeats DNS rebinding.
 - A start command without a launcher signs the person in itself. It prints the URL with the ticket.
@@ -248,4 +250,3 @@ oneberth holds the admin scripts both applications reuse.
 - Sign-out at the identity provider.
 - A limit on the rate of sign-ins.
 - Sign-in through a provider on the desktop.
-- How the local user is authenticated. The ticket of "Locally" is the proposal.
