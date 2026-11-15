@@ -35,26 +35,19 @@ An untrusted worker follows these rules:
 - It reaches a model provider through the egress proxy. Its engines hold fake keys, and the
   proxy puts the real key in the place of each.
 - The egress proxy passes a call on to the model providers alone.
-- It has no route to the front listener.
-- It keeps its engines' state in a directory of its own: `workers/<name>` in the data directory.
-- Its description mounts that directory or a directory inside it, and no other path of the host.
+- It keeps the state of its engines in `workers/<name>`, a directory of the data directory.
+- Its description mounts only that directory, or a subdirectory.
 
 A token limits every worker, trusted or not. The network is the second limit.
 
 ### What a container is for
 
-- A default container is a fair barrier against unreviewed or buggy code that does damage
-  by accident.
+- A default container is a fair barrier against unreviewed or buggy code doing damage by
+  accident.
 - It is not a strong boundary against a determined attacker. It shares the host's kernel.
-- The rules above serve the first purpose. They keep a mistake small: a wrong path in a
-  description, a stray request, a key in the wrong place.
-- oneberth adds no code to hold an attacker inside a container. It reads a description as
-  it is written, and it hardens nothing: it follows no link, drops no capability and
-  filters no system call.
-- A gap that only an attacker inside the container would meet is out of scope. This section
-  answers it, and no code does.
-- Code that may be hostile needs a stronger boundary than a container, such as a VM
-  ("A worker in a VM").
+- The rules for an untrusted worker limit the damage of a mistake.
+- A defence against an attacker inside a container is out of scope for oneberth.
+- Code that may be hostile needs a stronger boundary, such as a VM ("A worker in a VM").
 
 ## Starting a worker
 
@@ -116,13 +109,11 @@ and the egress proxy alone.
 The egress proxy is on both networks. The launcher starts it when the configuration names
 an untrusted worker.
 
-A container on `sandbox` has no route to the front listener:
+A container on `sandbox` has no route to the front listener.
 
-- The backend binds its front listener to its address on `app` alone. It binds its worker
+- The backend binds the front listener to its address on `app` alone. It binds the worker
   listener on both networks.
-- `sandbox` has no route to the host. The two listeners published on the host's loopback
-  address are out of its reach.
-- A container on `sandbox` gets no name for the host's gateway.
+- Both listeners are published on the host. Only a container on `app` has a route to the host.
 
 ```mermaid
 flowchart LR
@@ -151,7 +142,7 @@ flowchart LR
 
 A service on the host's loopback address, such as a local tool server or a local model, is
 outside the containers. The backend and the trusted workers' containers reach it through
-the host's gateway name. An untrusted worker reaches no service of the host.
+the host's gateway name.
 
 ## A worker in a VM
 

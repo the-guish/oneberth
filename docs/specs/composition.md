@@ -33,8 +33,8 @@ A route is a FastAPI route. oneberth gives it two things:
   permission applies to;
 - a dependency that gives the handler the principal.
 
-The resource is a parameter of the route's path, or the one the caller's grant names.
-A route that declares neither serves every resource ([identity.md](identity.md), "Roles").
+The resource is a parameter of the route's path, or the resource of the caller's grant.
+A route without a resource serves every resource ([identity.md](identity.md), "Roles").
 
 Every route declares a permission. `compose_app` refuses a component that has a route
 without one, and the backend does not start.

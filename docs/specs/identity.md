@@ -89,7 +89,7 @@ Every secret is 256 random bits. The store keeps its SHA-256.
 - A service token has one role and, when the role needs one, one resource.
 - **A person's credentials are minted from that person's browser session.** The session must
   be younger than ten minutes. A bearer that asks is answered 403.
-- A service token is created and revoked as ["Service tokens"](#service-tokens) says.
+- ["Service tokens"](#service-tokens) says who creates and revokes a service token.
 - A token the launcher mints ends when the application stops.
 - Taking access away needs no fresh sign-in.
 
@@ -108,18 +108,17 @@ Every secret is 256 random bits. The store keeps its SHA-256.
 - An application declares its permissions and roles as data when its backend starts.
   A name starts with the application's name: `neorc/runs:start`, `neorc/worker`.
 - Roles are fixed per release. Nobody edits a role in a deployment.
-- A role is for people or for services. A person holds roles for people, and a service token
-  carries a role for services.
-- A role holds permissions of its own application alone.
+- A role is for people or for services. A person has roles for people, and a service token
+  has a role for services.
+- A role has permissions of its own application alone.
 - A role says whether its grants need a resource. `neorc/worker` needs a queue, and
   `robinauts/worker` needs a worker name.
-- A grant with a resource holds on that resource alone. It passes a route whose path names
-  that resource.
-- A route that names no resource serves every resource. It refuses a grant with a resource:
-  a worker of one queue cannot list the runs of every queue.
-- A route may declare that it acts on the resource of the caller's own grant, as a worker's
-  claim of a task does. It then passes that grant, and its handler reads the resource from
-  the grant.
+- A grant with a resource applies to that resource alone. A route whose path names that
+  resource accepts the grant.
+- A route that names no resource serves every resource. It refuses a grant with a resource.
+- A route can act on the resource of the caller's own grant, as a worker's claim of a task
+  does. The route declares this and accepts that grant. Its handler reads the resource
+  from the grant.
 - Every route declares the permission it needs. `compose_app` refuses a route without one
   ([composition.md](composition.md), "A component").
 - oneberth checks the permission and the resource. The application checks ownership, such as
@@ -151,28 +150,27 @@ The `neorc` application registers the table with oneberth and gives the port its
 Who manages them:
 
 - `oneberth/tokens:manage` is the permission to create, list and revoke service tokens.
-- Two roles hold it: `oneberth/admin` and `oneberth/launcher`. No role of an application can.
-- An admin creates and revokes a service token from their browser session. Creating one
-  needs a session younger than ten minutes, as a person's own credentials do.
-- A bearer of an admin creates and revokes none. A personal token, a device session and a
-  forwarded session are each answered 403.
-- A bearer that holds the permission lists the service tokens. A list shows no secret.
-- The launch secret is a bearer, and it creates and revokes them. It exists in the local
+- Two roles have this permission: `oneberth/admin` and `oneberth/launcher`.
+- An admin creates and revokes a service token from a browser session. Creating one needs a
+  session younger than ten minutes, as a person's own credentials do.
+- A bearer of an admin does not create or revoke any service token. A personal token, a
+  device session and a forwarded session are each answered 403.
+- A bearer with the permission lists the service tokens.
+- The launch secret is the one bearer that creates and revokes them. It exists in the local
   mode alone.
 - The operator manages them with the command line, on the store.
-- A backend makes the token of its own requests in its own memory. No request asks for one.
+- A backend creates the token for its own requests in memory.
 
-What a new one carries:
+The role of a new one:
 
-- A service token carries one role for services. The table above names them: the roles
-  given to a service token.
-- A service token never carries a role for people, such as `neorc/user` or `oneberth/admin`.
-- No service token carries `oneberth/launcher`. The launch secret alone holds it.
-- No service token therefore holds `oneberth/tokens:manage`, and none creates another.
+- A service token has one role for services. The table of roles gives these roles to a
+  service token.
+- A service token never has a role for people, such as `neorc/user` or `oneberth/admin`.
+- The launch secret alone has `oneberth/launcher`.
 - The application of the role may refuse a token. neorc refuses a worker token for a queue
   nobody declared.
-- A service token lives as long as its creator says. One created without a life lasts until
-  it is revoked.
+- A service token ends at the time its creator sets. A token created without an end lasts
+  until it is revoked.
 
 ## Checks on a request
 
@@ -206,8 +204,7 @@ A composition serves these under `/auth`.
 - The backends of a deployment trust the same store.
 - A backend that forwards a person's request sends that person's credential as a bearer.
   The receiving backend finds it in the store and decides the permission itself.
-- A forwarded session counts as a bearer. It mints and removes nothing: no credential of
-  the person, and no service token.
+- A forwarded session counts as a bearer. It mints and removes nothing.
 - A backend's own requests use a service token of its own.
 
 ## Configuration
@@ -287,5 +284,4 @@ oneberth holds the admin scripts both applications reuse.
 - Sign-out at the identity provider.
 - A limit on the rate of sign-ins.
 - Sign-in through a provider on the desktop.
-- The credential of the desktop's admin scripts. A personal token of the local user lists
-  service tokens, and creates and revokes none.
+- The credential of the desktop's admin scripts. A personal token only lists service tokens.
