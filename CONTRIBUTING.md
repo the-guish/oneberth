@@ -107,6 +107,12 @@ framework or HTTP client.
 - The core reads the time from an injected clock. Tests move the clock; they never sleep.
 - Most tests run in memory, in milliseconds. A test of an adapter covers only what the
   adapter adds: SQL, transport, its own concurrency.
+- A test in memory touches no real path outside its temporary directory, and no real
+  process, port or `docker`. An adapter does that on the real world. CI runs the tests as
+  an ordinary user, so a test that writes anywhere else passes only for root.
+- A test's wait on the launcher's stand-ins never hangs. It fails at once when the
+  launcher's run has ended, and after `WAIT_SECONDS` otherwise. Every CI job has a time
+  limit.
 
 ## Developer Certificate of Origin
 

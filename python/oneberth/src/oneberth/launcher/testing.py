@@ -9,15 +9,21 @@ them ``silent``, and stop on SIGTERM, unless a test makes them ``stubborn``.
 ``MemoryDocker`` keeps networks and containers as Docker does, and its
 containers are stand-in processes too. ``ManualTimer`` lets time pass only
 when a test advances it.
+
+A test's wait on a stand-in never hangs. It fails at once when the launcher's
+run has ended, with how it ended, and after ``WAIT_SECONDS`` in real time
+otherwise. Either failure names what it waited for and holds the journal.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+import contextlib
+from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
+from typing import Any
 
 from oneberth.launcher._containers import DockerRuntime
-from oneberth.launcher._core import AGAIN, Launcher
+from oneberth.launcher._core import AGAIN, Launcher, Outcome
 from oneberth.launcher._describe import (
     BACKEND,
     WINDOW,
@@ -38,14 +44,90 @@ from oneberth.launcher._shape import (
 _SETTLE_TURNS = 20
 """How many turns of the event loop a sleeper must last to count as sleeping."""
 
+WAIT_SECONDS = 10.0
+"""How long, in real time, a test waits on a stand-in before it fails."""
+
+
+class Runs:
+    """The launcher's runs, as the stand-ins see them.
+
+    A wait of a test fails at once once every run has ended, and after
+    ``WAIT_SECONDS`` otherwise.
+    """
+
+    def __init__(self, journal: list[str]) -> None:
+        self.journal = journal
+        self.running = 0
+        """How many runs have begun and not ended."""
+        self.ended: Outcome | BaseException | None = None
+        """How the last run ended: its outcome, or what it raised."""
+        self._wakes: list[asyncio.Event] = []
+
+    def wakes(self, event: asyncio.Event) -> None:
+        """Set ``event`` when a run ends, so that its waiter looks again."""
+        self._wakes.append(event)
+
+    def watch(self, run: Coroutine[Any, Any, Outcome]) -> Coroutine[Any, Any, Outcome]:
+        """Note that ``run`` begins now, and note its end."""
+        self.running += 1
+        return self._watched(run)
+
+    async def _watched(self, run: Coroutine[Any, Any, Outcome]) -> Outcome:
+        try:
+            outcome = await run
+        except BaseException as error:
+            self._end(error)
+            raise
+        self._end(outcome)
+        return outcome
+
+    def _end(self, how: Outcome | BaseException) -> None:
+        self.running -= 1
+        self.ended = how
+        for event in self._wakes:
+            event.set()
+
+    def check(self, what: str) -> None:
+        """Fail when no run goes on any more, and one has ended."""
+        if self.running or self.ended is None:
+            return
+        how = self.ended
+        if isinstance(how, Outcome):
+            said = f"it returned {how.ending.value}: {how.detail}"
+        else:
+            said = f"it raised {type(how).__name__}"
+            if str(how):
+                said += f": {how}"
+        error = AssertionError(
+            f"waited for {what}, but the launcher's run has ended: {said}."
+            f" The journal: {self.journal}"
+        )
+        if isinstance(how, BaseException):
+            raise error from how
+        raise error
+
+    @contextlib.asynccontextmanager
+    async def capped(self, what: str) -> AsyncIterator[None]:
+        """Fail the wait inside after ``WAIT_SECONDS``."""
+        try:
+            async with asyncio.timeout(WAIT_SECONDS):
+                yield
+        except TimeoutError:
+            raise AssertionError(
+                f"waited {WAIT_SECONDS:g} s for {what}, in vain."
+                f" The journal: {self.journal}"
+            ) from None
+
 
 class ManualTimer:
     """A timer whose time passes when a test calls ``advance``."""
 
-    def __init__(self) -> None:
+    def __init__(self, runs: Runs | None = None) -> None:
         self.now = 0.0
         self._sleepers: list[tuple[float, asyncio.Future[None]]] = []
         self._slept = asyncio.Event()
+        self._runs = runs or Runs([])
+        self._runs.wakes(self._slept)
 
     async def sleep(self, seconds: float) -> None:
         entry = (self.now + seconds, asyncio.get_running_loop().create_future())
@@ -59,16 +141,19 @@ class ManualTimer:
     async def sleeping(self, seconds: float) -> None:
         """Wait until something sleeps until ``seconds`` from now, and still
         sleeps once the other tasks have had their turns."""
-        while True:
-            for _ in range(_SETTLE_TURNS):
-                await asyncio.sleep(0)
-            if any(
-                deadline - self.now == seconds and not done.done()
-                for deadline, done in self._sleepers
-            ):
-                return
-            self._slept.clear()
-            await self._slept.wait()
+        what = f"something to sleep {seconds:g} s"
+        async with self._runs.capped(what):
+            while True:
+                for _ in range(_SETTLE_TURNS):
+                    await asyncio.sleep(0)
+                if any(
+                    deadline - self.now == seconds and not done.done()
+                    for deadline, done in self._sleepers
+                ):
+                    return
+                self._runs.check(what)
+                self._slept.clear()
+                await self._slept.wait()
 
     def advance(self, seconds: float) -> None:
         """Let ``seconds`` pass, and wake what sleeps until then."""
@@ -149,7 +234,7 @@ class StandInProcess:
 class StandInRuntime:
     """Starts stand-in processes, and notes each start in the journal."""
 
-    def __init__(self, journal: list[str]) -> None:
+    def __init__(self, journal: list[str], runs: Runs | None = None) -> None:
         self.processes: dict[str, StandInProcess] = {}
         self.silent: set[str] = set()
         """Names whose process never says ``ready``."""
@@ -159,6 +244,8 @@ class StandInRuntime:
         """Names whose process cannot be started."""
         self._journal = journal
         self._started = asyncio.Event()
+        self._runs = runs or Runs(journal)
+        self._runs.wakes(self._started)
 
     async def prepare(self, application: Application) -> None:
         self._journal.append("prepare")
@@ -198,9 +285,12 @@ class StandInRuntime:
 
     async def process(self, name: str) -> StandInProcess:
         """The process of ``name``, once the launcher has started it."""
-        while name not in self.processes:
-            self._started.clear()
-            await self._started.wait()
+        what = f"the {name} to start"
+        async with self._runs.capped(what):
+            while name not in self.processes:
+                self._runs.check(what)
+                self._started.clear()
+                await self._started.wait()
         return self.processes[name]
 
 
@@ -364,10 +454,11 @@ class StandIns:
 
     def __init__(self) -> None:
         self.journal: list[str] = []
-        self.runtime = StandInRuntime(self.journal)
+        self.runs = Runs(self.journal)
+        self.runtime = StandInRuntime(self.journal, self.runs)
         self.api = StandInApi(self.journal)
         self.windows = StandInWindows(self.journal)
-        self.timer = ManualTimer()
+        self.timer = ManualTimer(self.runs)
         self.docker = MemoryDocker(self.runtime, self.journal)
 
     def launcher(
@@ -386,7 +477,8 @@ class StandIns:
                 worker_port=worker_port,
                 user="1000:1000",
             )
-        return Launcher(
+        return _Watched(
+            self.runs,
             application,
             runtime=runtime,
             api=self.api,
@@ -401,9 +493,22 @@ class StandIns:
         return await self.runtime.process(name)
 
 
+class _Watched(Launcher):
+    """A launcher whose runs the stand-ins see begin and end."""
+
+    def __init__(self, runs: Runs, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._runs = runs
+
+    def run(self) -> Coroutine[Any, Any, Outcome]:
+        return self._runs.watch(super().run())
+
+
 __all__ = [
+    "WAIT_SECONDS",
     "ManualTimer",
     "MemoryDocker",
+    "Runs",
     "StandInApi",
     "StandInProcess",
     "StandInRuntime",

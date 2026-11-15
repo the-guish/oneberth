@@ -32,6 +32,7 @@ from oneberth.launcher import (
     Trust,
     Window,
     Worker,
+    testing,
 )
 from oneberth.launcher.testing import StandIns
 
@@ -311,6 +312,54 @@ async def test_a_worker_that_cannot_be_started_fails_the_start() -> None:
 
     assert (await running).detail == "w2 could not be started"
     assert stand_ins.journal == [*STARTED[:5], "stop w1", "stop backend", "release"]
+
+
+async def test_a_wait_for_a_part_fails_at_once_when_the_run_has_ended() -> None:
+    stand_ins = StandIns()
+    stand_ins.runtime.refused.add("w2")
+    running, _ = await started(stand_ins)
+
+    with pytest.raises(AssertionError) as failed:
+        await stand_ins.process(WINDOW)
+    assert str(failed.value) == (
+        "waited for the window to start, but the launcher's run has ended:"
+        " it returned start failed: w2 could not be started."
+        f" The journal: {stand_ins.journal}"
+    )
+    assert running.done()
+
+
+async def test_a_wait_for_a_part_fails_with_what_the_run_raised() -> None:
+    stand_ins = StandIns()
+    stand_ins.runtime.silent.add(BACKEND)
+    running, _ = await started(stand_ins)
+    await stand_ins.process(BACKEND)
+    running.cancel()
+
+    with pytest.raises(AssertionError, match="it raised CancelledError") as failed:
+        await stand_ins.process(WINDOW)
+    assert isinstance(failed.value.__cause__, asyncio.CancelledError)
+    with pytest.raises(AssertionError, match="it raised CancelledError"):
+        await stand_ins.timer.sleeping(60)
+
+
+async def test_a_wait_on_the_stand_ins_fails_after_its_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(testing, "WAIT_SECONDS", 0.05)
+    stand_ins = StandIns()
+    running, stop = await started(stand_ins)
+    await stand_ins.process(WINDOW)
+
+    with pytest.raises(AssertionError) as failed:
+        await stand_ins.process("w3")
+    assert str(failed.value) == (
+        f"waited 0.05 s for the w3 to start, in vain. The journal: {STARTED}"
+    )
+    with pytest.raises(AssertionError, match="for something to sleep 15 s, in vain"):
+        await stand_ins.timer.sleeping(15)
+    stop()
+    await running
 
 
 def test_an_untrusted_worker_runs_in_a_container() -> None:
