@@ -69,6 +69,7 @@ from oneberth.identity._secrets import (
     random_secret,
     secret_hash,
 )
+from oneberth.identity._store import SCHEMA_VERSION, IdentityStore, check_schema
 
 __all__ = [
     "LAST_USED_EVERY",
@@ -76,6 +77,7 @@ __all__ = [
     "PAIRING_WRONG_TRIES",
     "PREFIXES",
     "REFUSED_FOR_GOOGLE",
+    "SCHEMA_VERSION",
     "TICKETS_CREATE",
     "TOKENS_MANAGE",
     "Approval",
@@ -92,6 +94,7 @@ __all__ = [
     "GrantEntry",
     "Identity",
     "IdentityError",
+    "IdentityStore",
     "InvalidValueError",
     "Match",
     "Matcher",
@@ -113,6 +116,7 @@ __all__ = [
     "User",
     "WrongNumberError",
     "allowed",
+    "check_schema",
     "is_permission_name",
     "is_resource_name",
     "is_role_name",
