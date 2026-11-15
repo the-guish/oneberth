@@ -10,6 +10,8 @@
   plan builds it.
 - What both applications do on a server today keeps working: PostgreSQL, sign-in through
   identity providers, one backend behind a reverse proxy.
+- No package is published in this version. Each repository pins the others to a commit
+  (["Pins"](#pins)).
 
 ### In this version
 
@@ -30,6 +32,21 @@
 - Workers that the platform starts, with tokens from the platform's secrets.
 - The worker listener as a service of its own, with a network policy.
 - A worker in a VM. The path to the worker listener is open.
+- Publishing the packages to PyPI and npm.
+
+## Pins
+
+- Each repository pins the others to a commit, as Robinauts pins neorc today.
+- A Python package is pinned by its git revision, in `[tool.uv.sources]`. uv builds it from
+  that commit.
+- The pins are: neorc on oneberth; Robinauts on oneberth and on neorc.
+- Robinauts pins the oneberth commit that its neorc commit pins. Robinauts' lock then holds
+  one oneberth.
+- A pinned commit is on the `main` branch of its repository.
+- A node package is installed from a checkout of the pinned commit. npm installs a git
+  dependency from the root of a repository alone, and the node packages live under `ts/`.
+- A script checks the pinned commits out and builds what a release needs.
+  `scripts/neorc-from-source.sh` in Robinauts does this for neorc's wheels today.
 
 ## Steps
 
@@ -71,8 +88,8 @@ Each step leaves both applications working, with their tests passing.
 - neorc's interface package is private today, exports nothing and builds one page. Its
   stylesheet is global, and its one switch for a host is `?embedded`.
 - neorc pins React 19.0.8 and Robinauts 19.3.1. The three repositories move React together.
-- No registry holds the packages yet. An application pins a commit, and a node package
-  ships its TypeScript source, since install scripts are disabled in both projects.
+- A node package ships its TypeScript source, since install scripts are disabled in both
+  projects. ["Pins"](#pins) says how an application gets it.
 
 ### 6. Robinauts on oneberth
 
