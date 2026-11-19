@@ -61,15 +61,27 @@ JOBS = RoleTable(
 )
 
 
+class Refused(Exception):
+    """A refusal of the application's own, with a sentence for a person."""
+
+
+NOT_THIS_BUILD = "the records of jobs are not this build's"
+
+
 class Sample:
     """Two components that note each moment of their lives in ``journal``.
 
     ``front`` and ``worker`` say how ``jobs`` reaches its own backend: in
     process by default, or at the listeners' addresses. ``jobs`` fails to
-    start when ``refusing``, and to begin serving when ``failing``.
+    start with the error ``refusing``, and to begin serving with ``failing``.
     """
 
-    def __init__(self, *, failing: bool = False, refusing: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        failing: BaseException | None = None,
+        refusing: BaseException | None = None,
+    ) -> None:
         self.journal: list[str] = []
         self.tokens: list[str] = []
         self.failing = failing
@@ -121,8 +133,8 @@ class Sample:
         @asynccontextmanager
         async def lifespan(context: Context) -> AsyncIterator[None]:
             journal.append("jobs starts")
-            if self.refusing:
-                raise RuntimeError("the records of jobs are not this build's")
+            if self.refusing is not None:
+                raise self.refusing
             async with client_of(self.app) as front:
                 asked = await front.post(
                     "/jobs/flows", json={}, headers=bearer(SOME_TOKEN)
@@ -139,8 +151,8 @@ class Sample:
             async with self.front() as front:
                 uploaded = await front.post("/jobs/flows", json={}, headers=bearer(ci))
             journal.append(f"jobs uploaded: {uploaded.status_code}")
-            if self.failing:
-                raise RuntimeError("the flows are refused")
+            if self.failing is not None:
+                raise self.failing
             token, _ = await context.access.create_own_token(
                 "jobs-worker", "jobs/worker", resource="gpu"
             )
@@ -214,7 +226,7 @@ async def test_serving_begins_once_all_started_and_ends_before_the_stop() -> Non
 
 
 async def test_a_component_that_fails_to_begin_serving_stops_the_start() -> None:
-    sample = Sample(failing=True)
+    sample = Sample(failing=Refused("the flows are refused"))
     app = sample.compose(await memory_store())
 
     with pytest.raises(ServerError, match="jobs failed to begin serving: the flows"):
@@ -230,21 +242,30 @@ async def test_a_component_that_fails_to_begin_serving_stops_the_start() -> None
 
 
 async def test_a_component_that_fails_to_start_stops_the_start() -> None:
-    sample = Sample(refusing=True)
+    sample = Sample(refusing=Refused(NOT_THIS_BUILD))
     app = sample.compose(await memory_store())
 
-    with pytest.raises(RuntimeError, match="the records of jobs"):
+    with pytest.raises(Refused, match="the records of jobs"):
         async with running(app):
             pass
 
     assert sample.journal == ["notes starts", "jobs starts", "notes stops"]
-    assert str(app.failure) == (
-        "component jobs failed to start: the records of jobs are not this build's"
-    )
+    assert str(app.failure) == f"component jobs failed to start: {NOT_THIS_BUILD}"
     # A start that works forgets the one that failed.
-    sample.refusing = False
+    sample.refusing = None
     async with running(app):
         assert app.failure is None
+
+
+async def test_a_serving_that_fails_without_a_word_is_named_by_its_error() -> None:
+    sample = Sample(failing=TimeoutError())
+    app = sample.compose(await memory_store())
+
+    with pytest.raises(ServerError) as stopped:
+        async with running(app):
+            pass
+
+    assert str(stopped.value) == "component jobs failed to begin serving: TimeoutError"
 
 
 async def test_the_answer_while_starting_says_where_own_requests_go() -> None:
@@ -338,7 +359,7 @@ async def test_a_served_backend_runs_both_moments_with_tokens_in_memory(
 async def test_a_served_backend_whose_component_fails_to_serve_never_says_ready() -> (
     None
 ):
-    sample = Sample(failing=True)
+    sample = Sample(failing=Refused("the flows are refused"))
     app = sample.compose(await memory_store())
     front, worker = _listening(sample)
     said: list[str] = []
@@ -357,13 +378,26 @@ async def test_a_served_backend_whose_component_fails_to_serve_never_says_ready(
     assert sample.journal[-3:] == ["notes ends serving", "jobs stops", "notes stops"]
 
 
-async def test_a_served_backend_whose_component_fails_to_start_says_which_and_why() -> (
-    None
-):
-    sample = Sample(refusing=True)
+@pytest.mark.parametrize(
+    ("error", "said"),
+    [
+        # An application's own error says its sentence.
+        (Refused(NOT_THIS_BUILD), NOT_THIS_BUILD),
+        # An error with no text, and a builtin one, are named by their type.
+        (TimeoutError(), "TimeoutError"),
+        (KeyError("DATABASE_URL"), "KeyError: 'DATABASE_URL'"),
+        (OSError(2, "No such file"), "FileNotFoundError: [Errno 2] No such file"),
+        (SystemExit(2), "SystemExit: 2"),
+    ],
+    ids=["refusal", "no text", "key", "builtin", "exit"],
+)
+async def test_a_served_backend_whose_component_fails_to_start_says_which_and_why(
+    error: BaseException, said: str
+) -> None:
+    sample = Sample(refusing=error)
     app = sample.compose(await memory_store())
     front, worker = _listening(sample)
-    said: list[str] = []
+    told: list[str] = []
 
     with pytest.raises(ServerError) as stopped:
         async with asyncio.timeout(20):
@@ -371,13 +405,11 @@ async def test_a_served_backend_whose_component_fails_to_start_says_which_and_wh
                 app,
                 front,
                 worker,
-                ready=lambda: said.append("ready"),
+                ready=lambda: told.append("ready"),
                 log_level="critical",
             )
 
-    assert str(stopped.value) == (
-        "component jobs failed to start: the records of jobs are not this build's"
-    )
-    assert isinstance(stopped.value.__cause__, RuntimeError)
-    assert said == []
+    assert str(stopped.value) == f"component jobs failed to start: {said}"
+    assert stopped.value.__cause__ is error
+    assert told == []
     assert sample.journal == ["notes starts", "jobs starts", "notes stops"]

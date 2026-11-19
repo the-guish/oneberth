@@ -64,7 +64,7 @@ app = compose_app(
 - It writes one OpenAPI document per component.
 - It starts the components in the order given and stops them in reverse.
 - It keeps why a start failed. The server's last line then names the component and gives its
-  error's sentence.
+  error's sentence. A builtin error, and one with no text, is named by its type.
 - It turns an application's errors into one answer shape, `{"error": …, "detail": …}`.
 
 ## Addresses

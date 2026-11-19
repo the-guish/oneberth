@@ -202,7 +202,8 @@ class Composition:
                         "component %s failed to begin serving", component.name
                     )
                     raise ServerError(
-                        f"component {component.name} failed to begin serving: {error}"
+                        f"component {component.name} failed to begin serving: "
+                        f"{_said(error)}"
                     ) from error
                 begun.append((component, moment))
                 log.info("component %s serves", component.name)
@@ -338,7 +339,7 @@ def compose_app(
                 if component.lifespan is not None:
                     try:
                         await stack.enter_async_context(component.lifespan(context))
-                    except Exception as error:
+                    except (Exception, SystemExit) as error:
                         started.failure = _failure(
                             f"component {component.name} failed to start", error
                         )
@@ -364,7 +365,7 @@ def compose_app(
         async with AsyncExitStack() as whole:
             try:
                 await whole.enter_async_context(life(app))
-            except Exception as error:
+            except (Exception, SystemExit) as error:
                 if started.failure is None:
                     started.failure = _failure("the backend did not start", error)
                 raise
@@ -437,11 +438,27 @@ class _Started:
     failure: ServerError | None = None
 
 
-def _failure(what: str, error: Exception) -> ServerError:
-    """``what``, with the sentence of ``error``, as ``serve`` raises it."""
-    failure = ServerError(f"{what}: {error}")
+def _failure(what: str, error: BaseException) -> ServerError:
+    """``what``, with what ``error`` says, as ``serve`` raises it."""
+    failure = ServerError(f"{what}: {_said(error)}")
     failure.__cause__ = error
     return failure
+
+
+def _said(error: BaseException) -> str:
+    """What ``error`` says, for the server's last line.
+
+    An application's own error says its sentence. A builtin error is named by
+    its type first: its text is not written for a person, and a ``KeyError``'s
+    is its key alone. An error with no text is its type's name.
+    """
+    text = str(error).strip()
+    name = type(error).__name__
+    if not text:
+        return name
+    if type(error).__module__ == "builtins":
+        return f"{name}: {text}"
+    return text
 
 
 def _login_name() -> str | None:
