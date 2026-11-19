@@ -27,7 +27,7 @@ A further application adds an icon.
   package, and gives both applications to the shell.
 - An application's code loads when its icon is first chosen.
 - An application chosen once stays mounted while another is shown. Its scroll position and
-  typed text are kept.
+  typed text are kept. Nothing of it is drawn, whatever its own styles say.
 - A hidden application stops its long polls and reads again when shown.
 
 ## Routes

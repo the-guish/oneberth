@@ -75,7 +75,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["src/test/setup.ts"],
-    css: false,
+    // Stylesheets are left out, but for one read as text by a test.
+    css: { include: [/\.css\?raw$/] },
     testTimeout: 20_000,
   },
   build: {

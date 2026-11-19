@@ -227,8 +227,16 @@
   overflow: hidden;
 }
 
+/*
+ * A hidden application keeps its boxes, so its scroll positions are kept:
+ * `display: none` would lose them. `visibility: hidden` alone is not enough,
+ * because a descendant that says `visibility: visible` is drawn anyway, as
+ * React Flow does for every node it has measured. `content-visibility:
+ * hidden` draws none of the subtree, whatever it says, and keeps its state.
+ */
 .oneberth-app-hidden {
   visibility: hidden;
+  content-visibility: hidden;
   pointer-events: none;
 }
 
