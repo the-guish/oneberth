@@ -113,7 +113,8 @@ async def serve(
     connections, each component's ``serving`` begins, in order, and then
     ``ready`` runs: it prints ``ready`` by default. Raises ``ServerError``
     when the backend does not start, or a component fails to begin serving;
-    ``ready`` then never runs.
+    ``ready`` then never runs. The error of a component that fails to start
+    names the component and says why.
 
     In the local mode, ``launch_secret`` is the secret of this start, unless
     ``app.launch_secret`` holds it already. ``welcome``, when given, gets the
@@ -156,6 +157,9 @@ async def serve(
             if not server.accepting.is_set():
                 accepting.cancel()
                 await task
+                if listener == "front" and app.failure is not None:
+                    # uvicorn logged the start's error and passed none of it on.
+                    raise app.failure
                 raise ServerError(f"the {listener} listener did not start")
         async with app.serving():
             ready()

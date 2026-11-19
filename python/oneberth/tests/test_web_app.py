@@ -1241,7 +1241,9 @@ async def test_a_backend_that_cannot_start_does_not_say_ready(samples: Samples) 
     composition = compose(samples, MemoryIdentityStore())  # never set up
     said: list[str] = []
 
-    with pytest.raises(ServerError, match="front listener did not start"):
+    with pytest.raises(
+        ServerError, match="the backend did not start: the store is not"
+    ):
         await serve(
             composition,
             socket.create_server(("127.0.0.1", 0)),

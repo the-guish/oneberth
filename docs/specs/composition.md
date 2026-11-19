@@ -63,6 +63,8 @@ app = compose_app(
 - It builds the front listener and the worker listener ([shapes.md](shapes.md), "Listeners").
 - It writes one OpenAPI document per component.
 - It starts the components in the order given and stops them in reverse.
+- It keeps why a start failed. The server's last line then names the component and gives its
+  error's sentence.
 - It turns an application's errors into one answer shape, `{"error": …, "detail": …}`.
 
 ## Addresses

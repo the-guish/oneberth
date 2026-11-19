@@ -52,7 +52,8 @@ It ships two packages:
   component sends its own requests to the backend from its `serving`, and
   starts there the parts that call the backend. A `serving` that fails to
   begin stops the start: the others end, the components stop, and nothing
-  says `ready`.
+  says `ready`. A component that fails to start stops it too. The server's
+  last line then names the component and says why, with its error's sentence.
 
 - Tokens in memory. A backend mints a service token for a part it starts
   itself with `Access.create_own_token`, in either mode. The token lives in

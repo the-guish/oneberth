@@ -65,13 +65,15 @@ class Sample:
     """Two components that note each moment of their lives in ``journal``.
 
     ``front`` and ``worker`` say how ``jobs`` reaches its own backend: in
-    process by default, or at the listeners' addresses.
+    process by default, or at the listeners' addresses. ``jobs`` fails to
+    start when ``refusing``, and to begin serving when ``failing``.
     """
 
-    def __init__(self, *, failing: bool = False) -> None:
+    def __init__(self, *, failing: bool = False, refusing: bool = False) -> None:
         self.journal: list[str] = []
         self.tokens: list[str] = []
         self.failing = failing
+        self.refusing = refusing
         self.front: Callable[[], httpx.AsyncClient] = lambda: client_of(self.app)
         self.worker: Callable[[], httpx.AsyncClient] = lambda: client_of(
             self.app, worker=True
@@ -119,6 +121,8 @@ class Sample:
         @asynccontextmanager
         async def lifespan(context: Context) -> AsyncIterator[None]:
             journal.append("jobs starts")
+            if self.refusing:
+                raise RuntimeError("the records of jobs are not this build's")
             async with client_of(self.app) as front:
                 asked = await front.post(
                     "/jobs/flows", json={}, headers=bearer(SOME_TOKEN)
@@ -223,6 +227,24 @@ async def test_a_component_that_fails_to_begin_serving_stops_the_start() -> None
         "jobs stops",
         "notes stops",
     ]
+
+
+async def test_a_component_that_fails_to_start_stops_the_start() -> None:
+    sample = Sample(refusing=True)
+    app = sample.compose(await memory_store())
+
+    with pytest.raises(RuntimeError, match="the records of jobs"):
+        async with running(app):
+            pass
+
+    assert sample.journal == ["notes starts", "jobs starts", "notes stops"]
+    assert str(app.failure) == (
+        "component jobs failed to start: the records of jobs are not this build's"
+    )
+    # A start that works forgets the one that failed.
+    sample.refusing = False
+    async with running(app):
+        assert app.failure is None
 
 
 async def test_the_answer_while_starting_says_where_own_requests_go() -> None:
@@ -333,3 +355,29 @@ async def test_a_served_backend_whose_component_fails_to_serve_never_says_ready(
 
     assert said == []
     assert sample.journal[-3:] == ["notes ends serving", "jobs stops", "notes stops"]
+
+
+async def test_a_served_backend_whose_component_fails_to_start_says_which_and_why() -> (
+    None
+):
+    sample = Sample(refusing=True)
+    app = sample.compose(await memory_store())
+    front, worker = _listening(sample)
+    said: list[str] = []
+
+    with pytest.raises(ServerError) as stopped:
+        async with asyncio.timeout(20):
+            await serve(
+                app,
+                front,
+                worker,
+                ready=lambda: said.append("ready"),
+                log_level="critical",
+            )
+
+    assert str(stopped.value) == (
+        "component jobs failed to start: the records of jobs are not this build's"
+    )
+    assert isinstance(stopped.value.__cause__, RuntimeError)
+    assert said == []
+    assert sample.journal == ["notes starts", "jobs starts", "notes stops"]
